@@ -12,17 +12,17 @@ Those new to building LLVM should take a look at the LLVM
 
   * The CMake variables ``LLVM_PARALLEL_COMPILE_JOBS`` and ``LLVM_PARALLEL_LINK_JOBS`` can be used to control the number of parallel threads used for compilation and linking.  In general, LLVM's link stages can be extremely memory intensive and setting the number of link job to roughly half the number of compile jobs is a good place to start (it is not uncommon to experience swapping if you are too aggressive in setting the number of link jobs).  If you have a system with significant resources (e.g., hundreds of cores and hundreds of gigabytes of RAM) you can push the limits but smaller systems will struggle during full builds of the toolchain without tweaking these two variables.  A nice balance here can reduce build times to under 10 minutes.  You will have to experiment with the system you are using to find the sweet spot. 
 
-**CMake Cache Files**: We provide two different CMake cache files that can be used to bootstrap the details of configuring the Kitsune and Tapir build.  These files are contain comments that describe aspects of the configuration choices and we encourage you to look through the, use them, and tailor them for to your needs. 
+**CMake Cache Files**: We provide two different CMake cache files that can be used to bootstrap the details of configuring the Kitsune and Tapir build.  These files contain comments that describe aspects of the configuration choices and we encourage you to look through them, use them, and tailor them to your needs. 
 
   * [kitsune-dev.cmake](../cmake/caches/kitsune-dev.cmake) provides a set of options for the basics of building the toolchain.  It is geared towards an in-tree development use case (i.e., skipping the use of an ``install`` target).
 
-  * [kitsune-install.cmake](../cmake/caches/kitsune-install.cmake) provides a production installation set of options. **This is a TODO item.**
+  * [kitsune-install.cmake](../cmake/caches/kitsune-install.cmake) provides a production installation set of options. *TODO: Need to create this file.*
 
 The standard CMake command line syntax is used to leverage these cache files.  Note that these files are for the full LLVM build:  
   ```bash
-    $ cd $LLVM_SOURCE_DIR 
+    $ cd $LLVM_SOURCE_DIR    # chage directory to the toplevel directory from git clone of repo.
     $ mkdir build; cd build 
-    $ cmake -G Ninja -C $KITSUNE_SRC_DIR}/cmake/caches/kitsune-dev.cmake ... ../llvm 
+    $ cmake -G Ninja -C ../kitsune/cmake/caches/kitsune-dev.cmake ... ../llvm 
   ``` 
   Although not necessary for most of the LLVM use cases, we encourage using newer versions of CMake.  Specifically versions 3.19 onwards are suggested as the best place to start. *Note* that you may experience warnings using newer releases as older versions are in the process of being phased out and LLVM is using some deprecated features).
 
