@@ -92,6 +92,7 @@ using namespace clang::driver;
 using namespace clang;
 using namespace llvm::opt;
 
+#define DEBUG_TYPE "clang-driver"
 
 // static
 std::string Driver::GetResourcesPath(StringRef BinaryPath,
@@ -800,19 +801,18 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
 /// by Dirs.
 ///
 static bool searchForFile(SmallVectorImpl<char> &FilePath,
-                          ArrayRef<std::string> Dirs,
+                          ArrayRef<StringRef> Dirs, 
                           StringRef FileName) {
   SmallString<128> WPath;
-  for (const std::string &Dir : Dirs) {
+  for (const StringRef &Dir : Dirs) {
     if (Dir.empty())
       continue;
     WPath.clear();
     llvm::sys::path::append(WPath, Dir, FileName);
     llvm::sys::path::native(WPath);
-    LLVM_DEBUG(llvm::dbgs() << "clang config file search path: " << WPath.c_str());
     if (llvm::sys::fs::is_regular_file(WPath)) {
       FilePath = std::move(WPath);
-      LLVM_DEBUG(llvm::dbgs() << "  found config file: " << FileName.str());
+      LLVM_DEBUG(llvm::dbgs() << "clang: found config file '" << FileName.str() << "'.\n");
       return true;
     }
   }
@@ -831,6 +831,7 @@ bool Driver::readConfigFile(StringRef FileName) {
   llvm::SmallString<128> CfgFileName(FileName);
   llvm::sys::path::native(CfgFileName);
   ConfigFile = CfgFileName.str();
+  ConfigFileList.push_back(CfgFileName.str());
   bool ContainErrors;
   CfgOptions = std::make_unique<InputArgList>(
       ParseArgStrings(NewCfgArgs, IsCLMode(), ContainErrors));
@@ -869,6 +870,19 @@ bool Driver::loadConfigFile() {
           SystemConfigDir = std::string(CfgDir.begin(), CfgDir.end());
       }
     }
+
+    if (CLOptions->hasArg(options::OPT_config_kitsune_dir_EQ)) {
+      SmallString<128> CfgDir;
+      CfgDir.append(
+          CLOptions->getLastArgValue(options::OPT_config_kitsune_dir_EQ));
+      if (!CfgDir.empty()) {
+        if (llvm::sys::fs::make_absolute(CfgDir).value() != 0)
+          KitsuneConfigDir.clear();
+        else
+          KitsuneConfigDir = std::string(CfgDir.begin(), CfgDir.end());
+      }
+    } else {}
+
     if (CLOptions->hasArg(options::OPT_config_user_dir_EQ)) {
       SmallString<128> CfgDir;
       CfgDir.append(
@@ -880,17 +894,7 @@ bool Driver::loadConfigFile() {
           UserConfigDir = std::string(CfgDir.begin(), CfgDir.end());
       }
     }
-    if (CLOptions->hasArg(options::OPT_config_kitsune_dir_EQ)) {
-      SmallString<128> CfgDir;
-      CfgDir.append(
-          CLOptions->getLastArgValue(options::OPT_config_kitsune_dir_EQ));
-      if (!CfgDir.empty()) {
-        if (llvm::sys::fs::make_absolute(CfgDir).value() != 0)
-          KitsuneConfigDir.clear();
-        else
-          KitsuneConfigDir = std::string(CfgDir.begin(), CfgDir.end());
-      }
-    }
+
   }
 
   // First try to find config file specified in command line.
@@ -924,26 +928,24 @@ bool Driver::loadConfigFile() {
     }
   }
 
-  // Prepare list of directories where config file is searched for.
-  SmallVector<std::string, 3> CfgFileSearchDirs;
-  CfgFileSearchDirs.push_back(UserConfigDir);
-  CfgFileSearchDirs.push_back(KitsuneConfigDir);
-  CfgFileSearchDirs.push_back(SystemConfigDir);
-  CfgFileSearchDirs.push_back(Dir);
+  // Prepare list of directories where config file is searched for.  Note that the directories 
+  // appear in the order they will be searched -- the first matched file will be used and the 
+  // search will stop from that point. 
+  StringRef CfgFileSearchDirs[] = {Dir, UserConfigDir, KitsuneConfigDir, SystemConfigDir};
 
   // kitsune: check for a kokkos configuration file.
   if (CLOptions->hasArg(options::OPT_fkokkos)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "looking for -fkokkos mode config file '" 
+               << KitsuneKokkosCfgFile.c_str() << "'.\n");
     llvm::SmallString<128> KokkosCfgFilePath;
-    if (searchForFile(KokkosCfgFilePath, CfgFileSearchDirs,
-                      KitsuneKokkosCfgFile)) {
+    if (searchForFile(KokkosCfgFilePath, CfgFileSearchDirs, KitsuneKokkosCfgFile)) {
       if (readConfigFile(KokkosCfgFilePath))
         Diag(diag::err_drv_cannot_read_kitsune_cfg_file)
            << KokkosCfgFilePath << "-fkokkos";
     } else {
-      Diag(diag::warn_drv_missing_cfg_file)
-        << KitsuneKokkosCfgFile
-        << "-fkokkos";
-      for (const std::string &SearchDir : CfgFileSearchDirs)
+      Diag(diag::warn_drv_missing_cfg_file) << KitsuneKokkosCfgFile << "-fkokkos";
+      for (const StringRef &SearchDir : CfgFileSearchDirs)
         if (!SearchDir.empty())
           Diag(diag::note_drv_config_file_searched_in) << SearchDir;
     }
@@ -952,32 +954,28 @@ bool Driver::loadConfigFile() {
   // tapir: check for a tapir target specific configuration file.
   if (CLOptions->hasArg(options::OPT_ftapir_EQ)) {
     if (const Arg *A = CLOptions->getLastArg(options::OPT_ftapir_EQ)) {
-      std::string TapirTargetCfgFileName;
-      TapirTargetCfgFileName = llvm::StringSwitch<std::string>(A->getValue())
-        .Case("none", TapirNoneCfgFile)
-        .Case("serial", TapirSerialCfgFile)
-        // NOTE: OpenCilk has internal flags automatically set
-        // .Case("opencilk", TapirOpenCilkCfgFile)
-        .Case("opencilk", "")
-        .Case("cuda", TapirCudaCfgFile)
-        .Case("openmp", TapirOpenMPCfgFile)
-        .Case("qthreads", TapirQthreadsCfgFile)
-        .Case("realm", TapirRealmCfgFile)
-        .Case("opencl", TapirOpenCLCfgFile)
-        .Case("hip", TapirHIPCfgFile)
-        .Default("");
-      if (TapirTargetCfgFileName.length() != 0) {
+      llvm::StringRef TapirTargetCfgFile(
+          llvm::StringSwitch<std::string>(A->getValue())
+              .Case("none", TapirNoneCfgFile)
+              .Case("serial", TapirSerialCfgFile)
+              .Case("opencilk", TapirOpenCilkCfgFile)
+              .Case("cuda", TapirCudaCfgFile)
+              .Case("openmp", TapirOpenMPCfgFile)
+              .Case("qthreads", TapirQthreadsCfgFile)
+              .Case("realm", TapirRealmCfgFile)
+              .Case("opencl", TapirOpenCLCfgFile)
+              .Case("hip", TapirHIPCfgFile)
+              .Default(""));
+      if (!TapirTargetCfgFile.empty()) {
         llvm::SmallString<128> TapirTargetCfgFilePath;
-        if (searchForFile(TapirTargetCfgFilePath, CfgFileSearchDirs,
-                TapirTargetCfgFileName)) {
-          if (readConfigFile(TapirTargetCfgFilePath)) {
+        if (searchForFile(TapirTargetCfgFilePath, CfgFileSearchDirs, TapirTargetCfgFile)) {
+          if (readConfigFile(TapirTargetCfgFilePath))
             Diag(diag::err_drv_cannot_read_kitsune_cfg_file)
               << TapirTargetCfgFilePath << A->getValue();
-          }
         } else {
-          Diag(diag::warn_drv_missing_cfg_file)
-            << TapirTargetCfgFileName << A->getValue();
-          for (const std::string &SearchDir : CfgFileSearchDirs)
+          Diag(diag::warn_drv_missing_cfg_file) 
+              << TapirTargetCfgFile << A->getValue();
+          for (const StringRef &SearchDir : CfgFileSearchDirs)
             if (!SearchDir.empty())
               Diag(diag::note_drv_config_file_searched_in) << SearchDir;
         }
@@ -1058,7 +1056,7 @@ bool Driver::loadConfigFile() {
   // --config. If it was deduced from executable name, it is not an error.
   if (FileSpecifiedExplicitly) {
     Diag(diag::err_drv_config_file_not_found) << CfgFileName;
-    for (const std::string &SearchDir : CfgFileSearchDirs)
+    for (const StringRef &SearchDir : CfgFileSearchDirs)
       if (!SearchDir.empty())
         Diag(diag::note_drv_config_file_searched_in) << SearchDir;
     return true;
@@ -1129,7 +1127,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
 
   // In CL mode, look for any pass-through arguments
   if (IsCLMode() && !ContainsError) {
-    SmallVector<const char *, 16> CLModePassThroughArgList;
+    SmallVector<const char *, 32> CLModePassThroughArgList;
     for (const auto *A : Args.filtered(options::OPT__SLASH_clang)) {
       A->claim();
       CLModePassThroughArgList.push_back(A->getValue());
@@ -1691,8 +1689,11 @@ void Driver::PrintVersion(const Compilation &C, raw_ostream &OS) const {
   OS << "InstalledDir: " << InstalledDir << '\n';
 
   // If configuration file was used, print its path.
-  if (!ConfigFile.empty())
-    OS << "Configuration file: " << ConfigFile << '\n';
+  if (ConfigFileList.size() > 0) {
+    OS << "Configuration files:\n";
+    for (const std::string &CfgFile : ConfigFileList)
+      OS << " - " << CfgFile << '\n';
+  }
 }
 
 /// PrintDiagnosticCategories - Implement the --print-diagnostic-categories

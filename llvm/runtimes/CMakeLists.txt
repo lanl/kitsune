@@ -13,7 +13,7 @@ endif()
 
 include(FetchContent)
 FetchContent_Declare(cheetahrt
-  GIT_REPOSITORY    git@github.com:OpenCilk/cheetah.git
+  GIT_REPOSITORY    https://github.com/OpenCilk/cheetah.git
   GIT_TAG           opencilk/v1.0
   SOURCE_DIR        ${CMAKE_CURRENT_SOURCE_DIR}/../../cheetah)
 

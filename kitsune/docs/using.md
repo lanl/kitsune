@@ -31,6 +31,7 @@ The second component of the compilation stage is Tapir that is implemented as a 
 Based on the selected runtime and architecture target, the result executable each have their own unique aspects for supporting parallel execution parameters.  Many are controlled by enviornment variables and are dependent upon the runtime system.  A quick overview of some of these parameters are quickly discussed below. 
 
 **OpenCilk Runtime Target**: The OpenCilk runtime target supports one primary environment variable that controls the number of worker threads that will be used to execute supported language constructs (e.g., `forall`).  This environment variable is `CILK_NWORKERS`.  In addition, the compilation step requires a bitcode file for the runtime interface that is currently searched for via the LD_LIBRARY_PATH environment variable.  The bitcode file is installed into ``INSTALL_PREFIX/lib/clang/VERSION/lib/TARGET_TRIPLE`` (see example below) and is also within the LLVM binary/build directory if you are working with an *in-tree* build.
+
 ```bash
 $ export LD_LIBRARY_PATH=/usr/local/kitsune/lib/clang/10.0.1/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
 $ clang++ -ftapir=opencilk ... my_program.cpp 
@@ -75,7 +76,7 @@ Each of these locations may be specifically set via CMake when building the tool
 
   * ``CLANG_CONFIG_FILE_USER_DIR``
   * ``CLANG_CONFIG_FILE_KITSUNE_DIR``
-  * ``CLANG_CONFIG_SYSTEM_DIR``
+  * ``CLANG_CONFIG_FILE_SYSTEM_DIR``
 
 A configuration file using a text format, with options provided exactly as they would be on the command line.  The only other legal syntax within the file are single-line comments that start with a ``#``.  For example: 
 

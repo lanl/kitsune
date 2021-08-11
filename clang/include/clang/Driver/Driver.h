@@ -249,6 +249,7 @@ private:
 
   /// Name of configuration file if used.
   std::string ConfigFile;
+  llvm::SmallVector<std::string, 8> ConfigFileList;
 
   /// Allocator for string saver.
   llvm::BumpPtrAllocator Alloc;

@@ -40,7 +40,7 @@ message(DEBUG "  --> KITSUNE-DEV - enabled LLVM projects: ${LLVM_ENABLE_PROJECTS
 # Keep the in-tree paths sound (i.e., no need for a full install to use these).
 set(CLANG_CONFIG_SYSTEM_DIR "${CMAKE_BINARY_DIR}/bin" CACHE STRING "")
 set(CLANG_CONFIG_FILE_KITSUNE_DIR "${CMAKE_BINARY_DIR}/share/kitsune" CACHE STRING "")
-set(CLANG_CONFIG_FILE_USER_DIR "~/.kitsune" CACHE STRING "")
+set(CLANG_CONFIG_FILE_USER_DIR "$ENV(HOME)/.kitsune" CACHE STRING "")
 
 #if ("openmp" IN_LIST LLVM_ENABLE_PROJECTS)
   # Disable this for now -- openmp backend needs to be udpated. 

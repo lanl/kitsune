@@ -21,21 +21,22 @@ set(_llvm_version "${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR}.${LLVM_VERSION_PA
 message(STATUS "ForAll examples: LLVM version: ${_llvm_version}")
 message(STATUS "   LLVM target triple: ${LLVM_DEFAULT_TARGET_TRIPLE}")
 
-# TODO: Not sure this (always) works.  
+# TODO: Not sure this (always? ever?) works.
+set(_new_ld_lib_path ${LLVM_BINARY_DIR}/lib/clang/${_llvm_version}/lib/${LLVM_DEFAULT_TARGET_TRIPLE})
 if (DEFINED ENV{LD_LIBRARY_PATH})
-  set(_ld_library_path $ENV{LD_LIBRARY_PATH})
-  string(PREPEND _ld_library_path ":")
+  set(_save_ld_library_path $ENV{LD_LIBRARY_PATH})
+  string(FIND _save_ld_library_path ${_new_ld_lib_path} _ld_index)
+  if (_ld_index EQUAL -1)
+    set(_ld_library_path $ENV{LD_LIBRARY_PATH})
+    string(APPEND _ld_library_path ":")
+  endif()
 endif()
-string(PREPEND _ld_library_path 
-       ${LLVM_BINARY_DIR}/lib/clang/${_llvm_version}/lib/${LLVM_DEFAULT_TARGET_TRIPLE})
+string(APPEND _ld_library_path ${_new_ld_lib_path})
 set(ENV{LD_LIBRARY_PATH} ${_ld_library_path})
-message(SETTING "automatically adding to LD_LIBRARY_PATH: ${_ld_library_path}.")
+message(STATUS "setting LD_LIBRARY_PATH: ${_ld_library_path}.")
 unset(_ld_library_path)
 unset(_llvm_version)
-
-set(_example_srcs
-  vecadd.cpp
-  std_vecadd.cpp)
+unset(_new_ld_lib_path)
 
 # Build a version of the examples for each runtime target that has 
 # been enabled. We can get a list of all the support runtime targets
@@ -81,3 +82,8 @@ endforeach()
 # Do some clean up... 
 unset(_example_srcs)
 unset(_tapir_rt_targets)
+
+if (_save_ld_library_path)
+  set(ENV{LD_LIBRARY_PATH} ${_save_ld_library_path})
+  unset(_save_ld_library_path)
+endif()

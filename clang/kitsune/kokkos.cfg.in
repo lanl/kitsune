@@ -1,6 +1,11 @@
 # Flags for the Kokkos mode (-fkokkos).
 # CXX flags 
 ${KITSUNE_KOKKOS_CXX_FLAGS}
-# Link flags and link libraries.
-${KITSUNE_KOKKOS_EXTRA_LINK_FLAGS} ${KITSUNE_KOKKOS_LINK_LIBS_FLAGS}
+${KITSUNE_KOKKOS_EXTRA_LINK_FLAGS} 
+${KITSUNE_KOKKOS_LINK_LIBS_FLAGS}
+
+# for in-tree use... 
+-I${LLVM_BINARY_DIR}/kokkos/core/src -I${LLVM_BINARY_DIR}/kokkos/containers/src 
+-I${LLVM_BINARY_DIR}/runtimes/runtimes-bins/
+-L${LLVM_BINARY_DIR}/runtimes/runtimes-bins/_deps/kokkos-build/core/src/ 
 
