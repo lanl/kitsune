@@ -99,3 +99,32 @@ Each special mode and runtime transformation/ABI target has its own named config
   * ``opencl.cfg``: OpenCL runtime ABI target specific flags. 
 
 These files can reduce complexity for end users by providing configuration- and build-specific flags.  This can be important when version-specific bitcode files and other details are used.  In addition, these files can provide developers additional flexibility for debugging, testing, and experimenting.  Obviously, all these features can also be hardcoded onto the command line for a more traditional use case.  In addition, to override any of the Kitsune or system configuration files you can place an empty config file within the user directory (no kitsune or system configuration files will be read in this case). 
+
+## Reductions 
+We provide two approaches to reductions. The first (still very much a work in
+progress and likely to break) is implicit reductions. This allows you to write
+basic reductions in the way you would for sequential code, and have them be
+optimized for parallelism, e.g. 
+
+```
+forall(auto x : xs) {
+  acc += x;
+}
+```
+
+should generate efficient parallel reduction code.
+
+Second, we provide a c++ interface for parallel reduction via user-defined
+reduction operators. Formally, we require a unital magma, which is just a
+reduction operator and a unit value, e.g. 0 for sums and 1 for products.
+
+This allows for the following style of reductions: 
+
+```
+#include<reductions.h>
+...
+  double sum = reduce<double>(Sum<double>(), big);
+```
+
+
+
