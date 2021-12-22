@@ -99,6 +99,15 @@ public:
   matchAndRewrite(acc::LoopOp op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
+
+class ParallelOpConversion : public OpConversionPattern<acc::ParallelOp> {
+public:
+  using OpConversionPattern<acc::ParallelOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
 } // namespace
 
 namespace {
@@ -120,15 +129,14 @@ class ConvertOpenACCToSCFPass
 } // namespace
 
 LogicalResult
-LoopOpConversion::matchAndRewrite(acc::LoopOp loop, ArrayRef<Value> operands,
+ParallelOpConversion::matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operands,
                                  ConversionPatternRewriter &rewriter) const {
-  
-  // TODO: handle nested case
-
-  // We assert that the first op in the loop is an scf::for
+  // We assert that the first op in the loop is an scf::for and the first op in
+  // a parallel is a loop
+  auto loop = dyn_cast<acc::LoopOp>(op.region().begin()->begin());
+  if(!loop) return success();
   auto fop = dyn_cast<scf::ForOp>(loop.region().begin()->begin());
-  if(!fop)
-    return failure(); 
+  if(!fop) return success(); 
 
   SmallVector<Value, 8> steps = {fop.step()} ; 
   SmallVector<Value, 8> upperBoundTuple = {fop.upperBound()};
@@ -143,19 +151,29 @@ LoopOpConversion::matchAndRewrite(acc::LoopOp loop, ArrayRef<Value> operands,
   rewriter.eraseBlock(par.getBody());
   rewriter.inlineRegionBefore(fop.region(), par.region(),
                               par.region().end());
-  rewriter.replaceOp(loop, par.results());
+  rewriter.replaceOp(op, par.results());
 
   // I believe we have to delete these ops explicitly, as they are not removed
   // by the removal of the surrounding acc::Loop op. I hate it.
-  rewriter.eraseOp(loop.getBody()->getTerminator()); 
-  rewriter.eraseOp(fop); 
+  //rewriter.eraseOp(loop.getBody()->getTerminator()); 
+  //rewriter.eraseOp(op.getRegion().begin()->getTerminator()); 
+  //rewriter.eraseOp(fop); 
+  //rewriter.eraseOp(loop); 
+  return success(); 
+}
+
+LogicalResult
+LoopOpConversion::matchAndRewrite(acc::LoopOp loop, ArrayRef<Value> operands,
+                                 ConversionPatternRewriter &rewriter) const {
+
+  
   return success();
 
 }
 
 void mlir::populateOpenACCToSCFConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  patterns.insert<LoopOpConversion>(ctx);
+  patterns.insert<ParallelOpConversion, LoopOpConversion>(ctx);
 }
 
 std::unique_ptr<Pass>
