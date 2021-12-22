@@ -90,6 +90,10 @@ namespace arm_neon {
 class ArmNeonDialect;
 } // namespace arm_neon
 
+namespace acc {
+class OpenACCDialect;
+} // end namespace acc
+
 #define GEN_PASS_CLASSES
 #include "mlir/Conversion/Passes.h.inc"
 

@@ -74,6 +74,30 @@ def ConvertAffineToStandard : Pass<"lower-affine"> {
   ];
 }
 
+def ConvertOpenACCToSCF : Pass<"lower-openacc"> {
+  let summary = "Lower OpenACC to SCF";
+  let description = [{
+
+    `scf.loop` operations are converted to `scf.parallel` operations
+
+    #### Input invariant
+
+    #### Output IR
+
+    #### Invariants
+
+    -   Functions without a body are not modified.
+    -   The semantics of the other functions is preserved.
+    -   Individual operations other than those mentioned above are not modified
+  }];
+
+  let constructor = "mlir::createConvertOpenACCToSCFPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "acc::OpenACCDialect"
+  ];
+}
+
 //===----------------------------------------------------------------------===//
 // ArithmeticToLLVM
 //===----------------------------------------------------------------------===//
