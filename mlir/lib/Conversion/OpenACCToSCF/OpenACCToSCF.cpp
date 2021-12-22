@@ -134,13 +134,24 @@ LoopOpConversion::matchAndRewrite(acc::LoopOp loop, ArrayRef<Value> operands,
   SmallVector<Value, 8> upperBoundTuple = {fop.upperBound()};
   SmallVector<Value, 8> lowerBoundTuple = {fop.lowerBound()};
 
+  // The fact that we construct an op that contains regions by creating it and
+  // then mutating the region insode is grotesque, but seems to be the MLIR
+  // Way™.
   scf::ParallelOp par = rewriter.create<scf::ParallelOp>(
     fop.getLoc(), lowerBoundTuple, upperBoundTuple, steps); 
-
+ 
+  rewriter.eraseBlock(par.getBody());
+  rewriter.inlineRegionBefore(fop.region(), par.region(),
+                              par.region().end());
   rewriter.replaceOp(loop, par.results());
-  return success();
-}
 
+  // I believe we have to delete these ops explicitly, as they are not removed
+  // by the removal of the surrounding acc::Loop op. I hate it.
+  rewriter.eraseOp(loop.getBody()->getTerminator()); 
+  rewriter.eraseOp(fop); 
+  return success();
+
+}
 
 void mlir::populateOpenACCToSCFConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
