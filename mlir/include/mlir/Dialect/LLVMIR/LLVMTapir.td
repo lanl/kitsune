@@ -14,7 +14,9 @@
 #define LLVMIR_TAPIR_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
-include "mlir/Dialect/LLVMIR/LLVMOps.td"
+include "mlir/Dialect/LLVMIR/LLVMOpsInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // LLVMTapir dialect definition
