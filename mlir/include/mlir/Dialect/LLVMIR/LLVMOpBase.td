@@ -355,4 +355,20 @@ class LLVM_VectorReductionAcc<string mnem>
   }];
 }
 
+// Opaque builder used for terminator operations that contain successors.
+def LLVM_TerminatorPassthroughOpBuilder :
+  OpBuilderDAG<(ins "ValueRange":$operands, "SuccessorRange":$destinations,
+    CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
+  [{
+    $_state.addOperands(operands);
+    $_state.addSuccessors(destinations);
+    $_state.addAttributes(attributes);
+  }]>;
+
+// Base class for LLVM terminator operations.  All terminator operations have
+// zero results and an optional list of successors.
+class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_Op<mnemonic, !listconcat(traits, [Terminator])>;
+
+
 #endif  // LLVMIR_OP_BASE
