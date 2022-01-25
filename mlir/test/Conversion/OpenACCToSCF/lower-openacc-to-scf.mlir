@@ -18,8 +18,8 @@ func @compute1() -> () {
   return
 }
 
-//  CHECK-LABEL: func @compute1(
-//  CHECK-NEXT:   scf.parallel ([[i:%.*]]) = ([[c0]]) to ([[c10]]) step ([[c1]]) {
+//  CHECK-LABEL: func @compute1
+//  CHECK:   scf.parallel ([[i:%.*]]) = (%c0) to (%c10) step (%c1) {
 //  CHECK-NEXT:     call @body([[i]]) : (index) -> ()
 //  CHECK-NEXT:     scf.yield
 //  CHECK-NEXT:   }
@@ -42,9 +42,9 @@ func @compute2(%l:index, %h:index, %s1:index, %s2:index) -> () {
   return
 }
 
-//  CHECK-LABEL: func @compute1(
-//  CHECK-NEXT:   scf.parallel (%i,%j) = (%l,%l) to (%h,%h) step (%s1,%s2) {
-//  CHECK-NEXT:     call @body2(%i, %j)
+//  CHECK: func @compute2([[l:%.*]]: index, [[h:%.*]]: index, [[s1:%.*]]: index, [[s2:%.*]]: index)
+//  CHECK-NEXT:   scf.parallel ([[i:%.*]], [[j:%.*]]) = ([[l]], [[l]]) to ([[h]], [[h]]) step ([[s1]], [[s2]]) {
+//  CHECK-NEXT:     call @body2([[i]], [[j]])
 //  CHECK-NEXT:     scf.yield
 //  CHECK-NEXT:   }
 //  CHECK-NEXT:   return 

@@ -10,6 +10,8 @@
 #include "mlir/Conversion/OpenACCToSCF/ConvertOpenACCToSCF.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -120,7 +122,7 @@ class ConvertOpenACCToSCFPass
     populateOpenACCToSCFConversionPatterns(patterns, &getContext());
     ConversionTarget target(getContext());
     target
-        .addLegalDialect<scf::SCFDialect>();
+        .addLegalDialect<scf::SCFDialect, StandardOpsDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
@@ -135,9 +137,9 @@ ParallelOpConversion::matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operan
                                  ConversionPatternRewriter &rewriter) const {
   // We only continue if first op in the loop is an scf::for and the first op in
   // a parallel is a loop. If not, the transform is a noop
-  auto loop = dyn_cast<acc::LoopOp>(op.region().begin()->begin());
+  auto loop = dyn_cast<acc::LoopOp>(op.region().front().begin());
   if(!loop) return success();
-  auto fop = dyn_cast<scf::ForOp>(loop.region().begin()->begin());
+  auto fop = dyn_cast<scf::ForOp>(loop.region().front().begin());
   if(!fop) return success(); 
 
   SmallVector<Value, 8> steps = {fop.step()} ; 
@@ -146,8 +148,8 @@ ParallelOpConversion::matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operan
   SmallVector<Value, 8> lowerBoundTuple = {fop.lowerBound()};
   
   if(auto collapse = loop.collapse()){ 
-    for(uint64_t i=0; i< *collapse - 1; i++){
-      fop = dyn_cast<scf::ForOp>(fop.region().begin()->begin());
+    for(uint64_t i=0; i < *collapse - 1; i++){
+      fop = dyn_cast<scf::ForOp>(fop.region().front().begin());
       if(!fop) return failure();
       steps.push_back(fop.step());
       upperBoundTuple.push_back(fop.upperBound());
@@ -156,9 +158,27 @@ ParallelOpConversion::matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operan
     }
   }
 
-  // The fact that we construct an op that contains regions by creating it and
-  // then mutating the region insode is grotesque, but seems to be the MLIR
-  // Way™.
+  // Both scf::ForOps and scf::ParallelOps must be single-block, so we only need
+  // to clone that block.
+  scf::ParallelOp par = rewriter.create<scf::ParallelOp>(
+    op.getLoc(), lowerBoundTuple, upperBoundTuple, steps, op.reductionOperands(), 
+    [&](OpBuilder& ob, Location l, ValueRange newivs, ValueRange otherargs){
+      BlockAndValueMapping map;
+      for(auto dim : llvm::zip(ivs, newivs)){
+        Value iv, newiv;
+        std::tie(iv, newiv) = dim; 
+        map.map(iv, newiv);
+      }
+      map.map(fop.getBody(), ob.getBlock()); 
+      for(auto &op : *fop.getBody()){
+        auto newop = ob.clone(op, map); 
+        map.map(op.getResults(), newop->getResults()); 
+      }
+    }); 
+
+  rewriter.replaceOp(op, par.results());
+  
+  /*
   scf::ParallelOp par = rewriter.create<scf::ParallelOp>(
     op.getLoc(), lowerBoundTuple, upperBoundTuple, steps); 
 
@@ -169,11 +189,21 @@ ParallelOpConversion::matchAndRewrite(acc::ParallelOp op, ArrayRef<Value> operan
     map.map(iv, newiv);
   }
 
-  rewriter.eraseBlock(&(*par.region().begin())); 
-  rewriter.cloneRegionBefore(fop.region(), par.region(),
-                             par.region().begin(), map);
+  rewriter.cloneRegionBefore(op.region(), par.region(), par.region().begin(), map); 
+  rewriter.setInsertionPointToStart(parBody); 
+  for(auto &op : *fop.getBody()){
+    auto newop = rewriter.clone(op, map); 
+    map.map(op.getResults(), newop->getResults()); 
+  }
+  */
+  //rewriter.eraseOp(&*par.end()); 
+  //rewriter.eraseBlock(fop.getBody()); 
+  //rewriter.cloneRegionBefore(fop.region(), par.region(),
+  //                           std::next(par.region().begin()), map);
 
-  rewriter.replaceOp(op, par.results());
+  //rewriter.eraseOp(op); 
+
+  //par.dump(); 
 
   return success(); 
 }
