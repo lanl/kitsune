@@ -72,3 +72,24 @@ add_mlir_dialect_library(MLIRROCDLIR
   MLIRSideEffectInterfaces
   MLIRVectorToLLVM
   )
+
+add_mlir_dialect_library(MLIRLLVMTapir
+  IR/LLVMTapirDialect.cpp
+
+  ADDITIONAL_HEADER_DIRS
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/LLVMIR
+
+  DEPENDS
+  MLIRLLVMTapirIncGen
+  MLIRLLVMTapirConversionsIncGen
+  intrinsics_gen
+
+  LINK_COMPONENTS
+  AsmParser
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+  MLIRLLVMIR
+  MLIRSideEffectInterfaces
+  )
