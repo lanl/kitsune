@@ -80,7 +80,7 @@ set(LLVM_TARGET_DEFINITIONS LLVMArmSVE.td)
 mlir_tablegen(LLVMArmSVEConversions.inc -gen-llvmir-conversions)
 add_public_tablegen_target(MLIRLLVMArmSVEConversionsIncGen)
 
-add_mlir_dialect(LLVMTapir llvm_tapir LLVMTapir)
+add_mlir_dialect(LLVMTapir llvm_tapir)
 add_mlir_doc(LLVMTapir -gen-dialect-doc LLVMTapir Dialects/)
 set(LLVM_TARGET_DEFINITIONS LLVMTapir.td)
 mlir_tablegen(LLVMTapirConversions.inc -gen-llvmir-conversions)

@@ -27,16 +27,33 @@ def LLVMTapir_Dialect : Dialect {
   let cppNamespace = "::mlir::LLVM";
 }
 
+// Base class for LLVM operations. All operations get an "llvm." prefix in
+// their name automatically. LLVM operations have either zero or one result,
+// this class is specialized below for both cases and should not be used
+// directly.
+class LLVMTapir_Op<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_OpBase<LLVMTapir_Dialect, mnemonic, traits>;
+
+// Base class for LLVM intrinsic operations, should not be used directly. Places
+// the intrinsic into the LLVM dialect and prefixes its name with "intr.".
+class LLVMTapir_IntrOp<string mnem, list<int> overloadedResults,
+                  list<int> overloadedOperands, list<OpTrait> traits,
+                  int numResults>
+    : LLVM_IntrOpBase<LLVMTapir_Dialect, "intr." # mnem, !subst(".", "_", mnem),
+                      overloadedResults, overloadedOperands, traits,
+                      numResults>;
+
 //----------------------------------------------------------------------------//
 // MLIR LLVM Arm SVE intrinsics using the MLIR LLVM Dialect type system
 //----------------------------------------------------------------------------//
 
-class LLVM_UnaryIntrinsicNoArgumentsOp<string func, list<OpTrait> traits = []> :
-    LLVM_OneResultIntrOp<func, [], [0],
-           !listconcat([NoSideEffect], traits)> {
-}
 
-def LLVM_Tapir_detach : LLVM_TerminatorOp<"detach",
+// Base class for LLVM terminator operations.  All terminator operations have
+// zero results and an optional list of successors.
+class LLVMTapir_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVMTapir_Op<mnemonic, !listconcat(traits, [Terminator])>;
+
+def LLVM_Tapir_detach : LLVMTapir_TerminatorOp<"detach",
     [AttrSizedOperandSegments, DeclareOpInterfaceMethods<BranchOpInterface>,
      NoSideEffect]> {
   let arguments = (ins LLVM_TokenType:$syncregion,
@@ -50,10 +67,9 @@ def LLVM_Tapir_detach : LLVM_TerminatorOp<"detach",
     attr-dict
   }];
 
-  let builders = [LLVM_TerminatorPassthroughOpBuilder];
 }
 
-def LLVM_Tapir_reattach : LLVM_TerminatorOp<"reattach",
+def LLVM_Tapir_reattach : LLVMTapir_TerminatorOp<"reattach",
     [DeclareOpInterfaceMethods<BranchOpInterface>,
      NoSideEffect]> {
   let arguments = (ins LLVM_TokenType:$syncregion,
@@ -65,10 +81,9 @@ def LLVM_Tapir_reattach : LLVM_TerminatorOp<"reattach",
     attr-dict
   }];
 
-  let builders = [LLVM_TerminatorPassthroughOpBuilder];
 }
 
-def LLVM_Tapir_sync : LLVM_TerminatorOp<"sync",
+def LLVM_Tapir_sync : LLVMTapir_TerminatorOp<"sync",
     [DeclareOpInterfaceMethods<BranchOpInterface>,
      NoSideEffect]> {
   let arguments = (ins LLVM_TokenType:$syncregion,
@@ -80,9 +95,8 @@ def LLVM_Tapir_sync : LLVM_TerminatorOp<"sync",
     attr-dict
   }];
 
-  let builders = [LLVM_TerminatorPassthroughOpBuilder];
 }
 
-def LLVM_Tapir_createsyncregion : LLVM_UnaryIntrinsicNoArgumentsOp<"createsyncregion">;
+def LLVM_Tapir_createsyncregion : LLVMTapir_IntrOp<"createsyncregion", [], [], [], 1>;
 
 #endif // LLVM_TAPIR_OPS
