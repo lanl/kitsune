@@ -25,6 +25,7 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -66,6 +67,7 @@ inline void registerAllDialects(DialectRegistry &registry) {
                   emitc::EmitCDialect,
                   gpu::GPUDialect,
                   LLVM::LLVMDialect,
+                  LLVM::LLVMTapirDialect,
                   linalg::LinalgDialect,
                   math::MathDialect,
                   memref::MemRefDialect,

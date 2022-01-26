@@ -9,10 +9,10 @@
 func @tapir_ops() {
   %sr = "llvm_tapir.intr.createsyncregion"() : () -> !llvm.token
   llvm_tapir.detach %sr, ^bb1, ^bb2
-^bb1
+^bb1:
   llvm_tapir.reattach %sr, ^bb2
-^bb2
+^bb2:
   llvm_tapir.sync %sr, ^bb3
-^bb3
+^bb3:
   llvm.return
 }

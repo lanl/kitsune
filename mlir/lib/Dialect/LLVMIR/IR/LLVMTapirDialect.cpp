@@ -19,6 +19,25 @@
 #include "mlir/IR/TypeUtilities.h"
 
 using namespace mlir;
+using namespace mlir::LLVM;
+
+Optional<MutableOperandRange>
+LLVM::Tapir_sync::getMutableSuccessorOperands(unsigned index) {
+  assert(index == 0 && "invalid successor index");
+  return continueDestOperandsMutable();
+}
+
+Optional<MutableOperandRange>
+LLVM::Tapir_reattach::getMutableSuccessorOperands(unsigned index) {
+  assert(index == 0 && "invalid successor index");
+  return continueDestOperandsMutable();
+}
+
+Optional<MutableOperandRange>
+LLVM::Tapir_detach::getMutableSuccessorOperands(unsigned index) {
+  assert(index < getNumSuccessors() && "invalid successor index");
+  return index == 0 ? detachDestOperandsMutable() : continueDestOperandsMutable();
+}
 
 void LLVM::LLVMTapirDialect::initialize() {
   addOperations<
