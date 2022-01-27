@@ -17,6 +17,7 @@
 // CHECK-NEXT: llvm
 // CHECK-NEXT: math
 // CHECK-NEXT: memref
+// CHECK-NEXT: llvm_tapir
 // CHECK-NEXT: nvvm
 // CHECK-NEXT: omp
 // CHECK-NEXT: pdl
