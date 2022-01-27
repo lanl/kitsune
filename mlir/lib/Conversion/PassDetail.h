@@ -40,6 +40,7 @@ class GPUModuleOp;
 
 namespace LLVM {
 class LLVMDialect;
+class LLVMTapirDialect; 
 } // namespace LLVM
 
 namespace NVVM {
