@@ -730,6 +730,28 @@ def SCFToSPIRV : Pass<"convert-scf-to-spirv"> {
 }
 
 //===----------------------------------------------------------------------===//
+// SCFToStandard
+//===----------------------------------------------------------------------===//
+
+def SCFToStandard : Pass<"convert-scf-to-std"> {
+  let summary = "Convert SCF dialect to Standard dialect, replacing structured"
+                " control flow with a CFG";
+  let constructor = "mlir::createLowerToCFGPass()";
+  let dependentDialects = ["StandardOpsDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// SCFToTapir
+//===----------------------------------------------------------------------===//
+
+def SCFToTapir : Pass<"convert-scf-to-tapir"> {
+  let summary = "Convert SCF dialect to Tapir dialect, replacing structured"
+                " control flow with a Tapir CFG";
+  let constructor = "mlir::createLowerToTapirPass()";
+  let dependentDialects = ["StandardOpsDialect", "LLVM::LLVMDialect",  "LLVM::LLVMTapirDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // SCFToGPU
 //===----------------------------------------------------------------------===//
 
