@@ -2,7 +2,7 @@
 // verify that terminators survive the canonicalizer
 
 // CHECK-LABEL: @tapir_ops
-// CHECK: llvm.inst.createsyncregion
+// CHECK: llvm_tapir.intr.createsyncregion
 // CHECK: llvm_tapir.detach
 // CHECK: llvm_tapir.reattach
 // CHECK: llvm_tapir.sync
