@@ -45,6 +45,33 @@ private:
   mlir::Location loc;
 };
 
+class DoConcurrentLoopHelper {
+public:
+  explicit DoConcurrentLoopHelper(fir::FirOpBuilder &builder, mlir::Location loc)
+      : builder(builder), loc(loc) {}
+  DoConcurrentLoopHelper(const DoConcurrentLoopHelper &) = delete;
+
+  /// Type of a callback to generate the loop body.
+  using BodyGenerator = std::function<void(fir::FirOpBuilder &, mlir::Value)>;
+
+  /// Build loop [\p lb, \p ub] with step \p step.
+  /// If \p step is an empty value, 1 is used for the step.
+  fir::DoConcurrentLoopOp createLoop(mlir::Value lb, mlir::Value ub, mlir::Value step,
+                           const BodyGenerator &bodyGenerator);
+
+  /// Build loop [\p lb,  \p ub] with step 1.
+  fir::DoConcurrentLoopOp createLoop(mlir::Value lb, mlir::Value ub,
+                           const BodyGenerator &bodyGenerator);
+
+  /// Build loop [0, \p count) with step 1.
+  fir::DoConcurrentLoopOp createLoop(mlir::Value count,
+                           const BodyGenerator &bodyGenerator);
+
+private:
+  fir::FirOpBuilder &builder;
+  mlir::Location loc;
+};
+
 } // namespace fir::factory
 
 #endif // FORTRAN_OPTIMIZER_BUILDER_DOLOOPHELPER_H

@@ -46,3 +46,38 @@ fir::factory::DoLoopHelper::createLoop(mlir::Value count,
   auto up = builder.create<mlir::arith::SubIOp>(loc, count, one);
   return createLoop(zero, up, one, bodyGenerator);
 }
+
+fir::DoConcurrentLoopOp
+fir::factory::DoConcurrentLoopHelper::createLoop(mlir::Value lb, mlir::Value ub,
+                                       mlir::Value step,
+                                       const BodyGenerator &bodyGenerator) {
+  auto lbi = builder.convertToIndexType(loc, lb);
+  auto ubi = builder.convertToIndexType(loc, ub);
+  assert(step && "step must be an actual Value");
+  auto inc = builder.convertToIndexType(loc, step);
+  auto loop = builder.create<fir::DoConcurrentLoopOp>(loc, lbi, ubi, inc);
+  auto insertPt = builder.saveInsertionPoint();
+  builder.setInsertionPointToStart(loop.getBody());
+  auto index = loop.getInductionVar();
+  bodyGenerator(builder, index);
+  builder.restoreInsertionPoint(insertPt);
+  return loop;
+}
+
+fir::DoConcurrentLoopOp
+fir::factory::DoConcurrentLoopHelper::createLoop(mlir::Value lb, mlir::Value ub,
+                                       const BodyGenerator &bodyGenerator) {
+  return createLoop(
+      lb, ub, builder.createIntegerConstant(loc, builder.getIndexType(), 1),
+      bodyGenerator);
+}
+
+fir::DoConcurrentLoopOp
+fir::factory::DoConcurrentLoopHelper::createLoop(mlir::Value count,
+                                       const BodyGenerator &bodyGenerator) {
+  auto indexType = builder.getIndexType();
+  auto zero = builder.createIntegerConstant(loc, indexType, 0);
+  auto one = builder.createIntegerConstant(loc, count.getType(), 1);
+  auto up = builder.create<mlir::arith::SubIOp>(loc, count, one);
+  return createLoop(zero, up, one, bodyGenerator);
+}

@@ -21,6 +21,7 @@ namespace fir {
 
 class FirEndOp;
 class DoLoopOp;
+class DoConcurrentLoopOp;
 class RealAttr;
 
 void buildCmpCOp(mlir::OpBuilder &builder, mlir::OperationState &result,
@@ -29,6 +30,7 @@ void buildCmpCOp(mlir::OpBuilder &builder, mlir::OperationState &result,
 unsigned getCaseArgumentOffset(llvm::ArrayRef<mlir::Attribute> cases,
                                unsigned dest);
 DoLoopOp getForInductionVarOwner(mlir::Value val);
+DoConcurrentLoopOp getForConcurrentInductionVarOwner(mlir::Value val);
 bool isReferenceLike(mlir::Type type);
 mlir::ParseResult isValidCaseAttr(mlir::Attribute attr);
 mlir::ParseResult parseCmpcOp(mlir::OpAsmParser &parser,

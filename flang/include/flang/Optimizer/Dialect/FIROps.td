@@ -2103,7 +2103,7 @@ def fir_LenParamIndexOp : fir_OneResultOp<"len_param_index", [NoSideEffect]> {
 
 def fir_ResultOp : fir_Op<"result",
     [NoSideEffect, ReturnLike, Terminator,
-     ParentOneOf<["IfOp", "DoLoopOp", "IterWhileOp"]>]> {
+     ParentOneOf<["IfOp", "DoLoopOp", "DoConcurrentLoopOp", "IterWhileOp"]>]> {
   let summary = "special terminator for use in fir region operations";
 
   let description = [{
@@ -2214,6 +2214,102 @@ def fir_DoLoopOp : region_Op<"do_loop",
 
     /// Get the body of the loop
     mlir::Block *getBody() { return &getRegion().front(); }
+
+    void setUnordered() {
+      (*this)->setAttr(getUnorderedAttrName(),
+                              mlir::UnitAttr::get(getContext()));
+    }
+
+    mlir::BlockArgument iterArgToBlockArg(mlir::Value iterArg);
+    void resultToSourceOps(llvm::SmallVectorImpl<mlir::Value> &results,
+                           unsigned resultNum);
+    mlir::Value blockArgToSourceOp(unsigned blockArgNum);
+  }];
+}
+
+def fir_DoConcurrentLoopOp : region_Op<"do_concurrent_loop",
+    [DeclareOpInterfaceMethods<LoopLikeOpInterface>]> {
+  let summary = "generalized loop operation";
+  let description = [{
+    Generalized high-level looping construct. This operation is similar to
+    MLIR's `scf.for`.
+
+    ```mlir
+      %l = arith.constant 0 : index
+      %u = arith.constant 9 : index
+      %s = arith.constant 1 : index
+      fir.do_loop %i = %l to %u step %s unordered {
+        %x = fir.convert %i : (index) -> i32
+        %v = fir.call @compute(%x) : (i32) -> f32
+        %p = fir.coordinate_of %A, %i : (!fir.ref<!fir.array<?xf32>>, index) -> !fir.ref<f32>
+        fir.store %v to %p : !fir.ref<f32>
+      }
+    ```
+
+    The above example iterates over the interval `[%l, %u]`. The unordered
+    keyword indicates that the iterations can be executed in any order.
+  }];
+
+  let arguments = (ins
+    Index:$lowerBound,
+    Index:$upperBound,
+    Index:$step,
+    Variadic<AnyType>:$initArgs,
+    OptionalAttr<UnitAttr>:$unordered,
+    OptionalAttr<UnitAttr>:$finalValue
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$lowerBound, "mlir::Value":$upperBound,
+      "mlir::Value":$step, CArg<"bool", "false">:$unordered,
+      CArg<"bool", "false">:$finalCountValue,
+      CArg<"mlir::ValueRange", "llvm::None">:$iterArgs,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes)>
+  ];
+
+  let extraClassDeclaration = [{
+    static constexpr llvm::StringRef getUnorderedAttrNameStr() {
+      return "unordered";
+    }
+    static constexpr llvm::StringRef getFinalValueAttrNameStr() {
+      return "finalValue";
+    }
+
+    mlir::Value getInductionVar() { return getBody()->getArgument(0); }
+    mlir::OpBuilder getBodyBuilder() {
+      return OpBuilder(getBody(), std::prev(getBody()->end()));
+    }
+    mlir::Block::BlockArgListType getRegionIterArgs() {
+      return getBody()->getArguments().drop_front();
+    }
+    mlir::Operation::operand_range getIterOperands() {
+      return getOperands().drop_front(getNumControlOperands());
+    }
+
+    void setLowerBound(Value bound) { (*this)->setOperand(0, bound); }
+    void setUpperBound(Value bound) { (*this)->setOperand(1, bound); }
+    void setStep(Value step) { (*this)->setOperand(2, step); }
+
+    /// Number of region arguments for loop-carried values
+    unsigned getNumRegionIterArgs() {
+      return getBody()->getNumArguments() - 1;
+    }
+    /// Number of operands controlling the loop: lb, ub, step
+    unsigned getNumControlOperands() { return 3; }
+    /// Does the operation hold operands for loop-carried values
+    bool hasIterOperands() {
+      return (*this)->getNumOperands() > getNumControlOperands();
+    }
+    /// Get Number of loop-carried values
+    unsigned getNumIterOperands() {
+      return (*this)->getNumOperands() - getNumControlOperands();
+    }
+
+    /// Get the body of the loop
+    mlir::Block *getBody() { return &region().front(); }
 
     void setUnordered() {
       (*this)->setAttr(getUnorderedAttrName(),
