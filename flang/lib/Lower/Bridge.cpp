@@ -1053,6 +1053,20 @@ private:
       const auto *concurrent =
           std::get_if<Fortran::parser::LoopControl::Concurrent>(
               &loopControl->u);
+      /*incrementLoopNestInfo = getConcurrentControl(
+          std::get<Fortran::parser::ConcurrentHeader>(concurrent->t),
+          std::get<std::list<Fortran::parser::LocalitySpec>>(concurrent->t));
+      IncrementLoopInfo &info = incrementLoopNestInfo.emplace_back(
+          *bounds->name.thing.symbol, bounds->lower, bounds->upper,
+          bounds->step);
+      if (unstructuredContext) {
+        maybeStartBlock(preheaderBlock);
+        info.hasRealControl = info.loopVariableSym.GetType()->IsNumeric(
+            Fortran::common::TypeCategory::Real);
+        info.headerBlock = headerBlock;
+        info.bodyBlock = bodyBlock;
+        info.exitBlock = exitBlock;
+      }*/
       assert(concurrent && "invalid DO loop variant");
       incrementLoopNestInfo = getConcurrentControl(
           std::get<Fortran::parser::ConcurrentHeader>(concurrent->t),
