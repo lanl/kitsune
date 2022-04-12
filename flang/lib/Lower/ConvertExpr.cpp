@@ -2802,8 +2802,8 @@ public:
               Fortran::lower::getAdaptToByRefAttr(builder)});
       return fir::CharBoxValue{temp, len};
     }
-    assert(fir::isa_trivial(type) ||
-           type.isa<fir::RecordType>() && "must be simple scalar");
+    assert((fir::isa_trivial(type) ||
+            type.isa<fir::RecordType>()) && "must be simple scalar");
     return builder.createTemporary(
         loc, type,
         llvm::ArrayRef<mlir::NamedAttribute>{
@@ -5362,11 +5362,11 @@ private:
               [&](const Fortran::evaluate::Triplet &t) {
                 mlir::Value lowerBound;
                 if (auto optLo = t.lower())
-                  lowerBound = fir::getBase(asScalar(*optLo));
+                  lowerBound = fir::getBase(asScalarArray(*optLo));
                 else
                   lowerBound = getLBound(arrayExv, subsIndex, one);
                 lowerBound = builder.createConvert(loc, idxTy, lowerBound);
-                mlir::Value stride = fir::getBase(asScalar(t.stride()));
+                mlir::Value stride = fir::getBase(asScalarArray(t.stride()));
                 stride = builder.createConvert(loc, idxTy, stride);
                 if (useTripsForSlice || createDestShape) {
                   // Generate a slice operation for the triplet. The first and
@@ -5376,7 +5376,7 @@ private:
                   trips.push_back(lowerBound);
                   mlir::Value upperBound;
                   if (auto optUp = t.upper())
-                    upperBound = fir::getBase(asScalar(*optUp));
+                    upperBound = fir::getBase(asScalarArray(*optUp));
                   else
                     upperBound = getUBound(arrayExv, subsIndex, one);
                   upperBound = builder.createConvert(loc, idxTy, upperBound);
@@ -5460,7 +5460,7 @@ private:
                     // array, so the iteration space must also be extended to
                     // include this expression in this dimension to adjust to
                     // the array's declared rank.
-                    mlir::Value v = fir::getBase(asScalar(e));
+                    mlir::Value v = fir::getBase(asScalarArray(e));
                     trips.push_back(v);
                     auto undef = builder.create<fir::UndefOp>(loc, idxTy);
                     trips.push_back(undef);
