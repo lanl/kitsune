@@ -281,7 +281,7 @@ public:
 
   bool Pre(const parser::StmtFunctionStmt &x) {
     const auto &parsedExpr{std::get<parser::Scalar<parser::Expr>>(x.t)};
-    if (const auto *expr{GetExpr(parsedExpr)}) {
+    if (const auto *expr{GetExpr(context_, parsedExpr)}) {
       for (const Symbol &symbol : evaluate::CollectSymbols(*expr)) {
         if (!IsStmtFunctionDummy(symbol)) {
           stmtFunctionExprSymbols_.insert(symbol.GetUltimate());
