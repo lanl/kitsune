@@ -10,6 +10,7 @@ add_flang_library(FIRTransforms
   CSE.cpp
   ExternalNameConversion.cpp
   FirLoopResultOpt.cpp
+  FirToSCF.cpp
   MemoryAllocation.cpp
   MemDataFlowOpt.cpp
   MemToReg.cpp
