@@ -172,6 +172,25 @@ static std::tuple<ELFKind, uint16_t, uint8_t> parseEmulation(StringRef emul) {
   return std::make_tuple(ret.first, ret.second, osabi);
 }
 
+TapirTargetID parseTapirTarget(const  llvm::StringRef &Target) {
+  // Otherwise use the runtime specified by -ftapir.
+  TapirTargetID TapirTarget = llvm::StringSwitch<TapirTargetID>(Target)
+      .Case("none", TapirTargetID::None)
+      .Case("serial", TapirTargetID::Serial)
+      .Case("cilk", TapirTargetID::Cilk)
+      .Case("cuda", TapirTargetID::Cuda)
+      .Case("opencilk", TapirTargetID::OpenCilk)      
+      .Case("cuda", TapirTargetID::Cuda)
+      .Case("openmp", TapirTargetID::OpenMP)
+      .Case("qthreads", TapirTargetID::Qthreads)
+      .Case("realm", TapirTargetID::Realm)
+      .Case("opencl", TapirTargetID::OpenCL)
+      .Case("cilk", TapirTargetID::Cilk)
+      .Case("gpu", TapirTargetID::GPU)
+      .Default(TapirTargetID::Last_TapirTargetID);
+
+  return TapirTarget;
+}
 // Returns slices of MB by parsing MB as an archive file.
 // Each slice consists of a member file in the archive.
 std::vector<std::pair<MemoryBufferRef, uint64_t>> static getArchiveMembers(
@@ -1200,6 +1219,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->zWxneeded = hasZOption(args, "wxneeded");
   setUnresolvedSymbolPolicy(args);
   config->Power10Stub = getP10StubOpt(args);
+  config->tapirTarget = parseTapirTarget(args.getLastArgValue(OPT_tapir_target));
 
   if (opt::Arg *arg = args.getLastArg(OPT_eb, OPT_el)) {
     if (arg->getOption().matches(OPT_eb))

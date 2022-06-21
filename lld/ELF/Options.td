@@ -719,3 +719,7 @@ defm check_dynamic_relocations: BB<"check-dynamic-relocations",
     "Perform additional validation of the written dynamic relocations",
     "Do not perform additional validation of the written dynamic relocations">,
   Flags<[HelpHidden]>;
+
+defm tapir_target:
+  Eq<"tapir-target", "Tapir target">; 
+

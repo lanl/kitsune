@@ -179,6 +179,9 @@ static lto::Config createConfig() {
   if (config->saveTemps)
     checkError(c.addSaveTemps(config->outputFile.str() + ".",
                               /*UseInputModulePath*/ true));
+  
+  c.TapirTarget = config->tapirTarget; 
+
   return c;
 }
 

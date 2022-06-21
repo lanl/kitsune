@@ -21,6 +21,7 @@
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/GlobPattern.h"
 #include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Transforms/Tapir/TapirTargetIDs.h"
 #include <atomic>
 #include <vector>
 
@@ -128,6 +129,7 @@ struct Configuration {
   llvm::StringRef thinLTOCacheDir;
   llvm::StringRef thinLTOIndexOnlyArg;
   llvm::StringRef ltoBasicBlockSections;
+  llvm::TapirTargetID tapirTarget;
   std::pair<llvm::StringRef, llvm::StringRef> thinLTOObjectSuffixReplace;
   std::pair<llvm::StringRef, llvm::StringRef> thinLTOPrefixReplace;
   std::string rpath;

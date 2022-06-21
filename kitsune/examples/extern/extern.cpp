@@ -23,7 +23,7 @@
 
 using namespace std; 
 
-const size_t VEC_SIZE = 1024; 
+const size_t VEC_SIZE = 4096; 
 
 int main (int argc, char* argv[]) {
   vector<int> A(VEC_SIZE);
