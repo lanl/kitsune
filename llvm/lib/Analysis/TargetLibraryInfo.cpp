@@ -50,6 +50,8 @@ static cl::opt<TapirTargetID> ClTapirTarget(
                           "qthreads", "Qthreads"),
                clEnumValN(TapirTargetID::Realm,
                           "realm", "Realm"),
+               clEnumValN(TapirTargetID::GPU,
+                          "gpu", "GPU"),
                clEnumValN(TapirTargetID::Cheetah,
                           "cheetah", "Cheetah"),
                clEnumValN(TapirTargetID::OpenCilk,
