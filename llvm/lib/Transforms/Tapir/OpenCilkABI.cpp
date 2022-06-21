@@ -120,7 +120,7 @@ void OpenCilkABI::prepareModule() {
 
     // Parse the bitcode file.  This call imports structure definitions, but not
     // function definitions.
-    std::unique_ptr<Module> ExternalModule = parseIRFile(RuntimeBCPath, SMD, C);
+    std::unique_ptr<Module> ExternalModule = parseIRFile(StringRef(path.getValue()), SMD, C);
 
     if (!ExternalModule)
       C.emitError("OpenCilkABI: Failed to parse bitcode ABI file: " +
