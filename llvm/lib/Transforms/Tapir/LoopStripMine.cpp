@@ -1561,20 +1561,32 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         // reduction. What we're doing is just checking if it's
         // storing to a loop invariant pointer
         Value* ptr = si->getPointerOperand(); 
-        if(L->isLoopInvariant(ptr))
+        if(L->isLoopInvariant(ptr)){
+          LLVM_DEBUG(dbgs() << "Found reduction var: " << ptr->getName() << "\n"); 
           reductions.insert(ptr); 
+        }
       }
     }
   }
+  LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
 
   ValueToValueMap redMap; 
   // TODO: Modify the strip mining outer loop to be smaller: currently we are
   // stack allocating n/2048 reduction values.
   // TODO: Initialize local reductions with unit values
+  Instruction *bloc = nullptr;
+  if(Instruction* I = dyn_cast<Instruction>(TripCount)){
+    bloc = I->getNextNode();
+  } else {
+    bloc = F->getEntryBlock().getTerminator();
+  }
+  IRBuilder<> RB(bloc); 
+  Value *outerIters = RB.CreateUDiv(TripCount,
+                               ConstantInt::get(TripCount->getType(), Count),
+                               "stripiter");
   for(Value* ptr : reductions){
-    IRBuilder<> B(F->getEntryBlock().getTerminator()); 
     auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
-    auto al = B.CreateAlloca(ty, TripCount, ptr->getName() + "_reduction");
+    auto al = RB.CreateAlloca(ty, outerIters, ptr->getName() + "_reduction");
     IRBuilder<> BH(L->getHeader()->getTerminator()); 
     auto lptr = BH.CreateBitCast(
       BH.CreateGEP(al, NewIdx), 
@@ -1617,13 +1629,17 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     }
     for(auto *sync : syncs){
       if(sync->getSyncRegion() == SyncReg){
+        BasicBlock *Sync = sync->getParent(); 
         BasicBlock *PostSync = sync->getSuccessor(0);
-        BasicBlock* RedEpiHeader = SplitBlock(PostSync, PostSync->getTerminator(), DT); 
-        PHINode *Idx = PHINode::Create(TripCount->getType(), 2,
+        BasicBlock* RedEpiHeader = BasicBlock::Create(Sync->getContext(), "reductionEpilogue", Sync->getParent(), Sync); 
+        RedEpiHeader->moveAfter(Sync); 
+        sync->setSuccessor(0, RedEpiHeader); 
+        BranchInst::Create(PostSync, RedEpiHeader); 
+        PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
                                        "reductionepilogueidx",
                                        RedEpiHeader->getFirstNonPHI());
         IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
-        Idx->addIncoming(TripCount, PostSync);
+        Idx->addIncoming(outerIters, sync->getParent());
         Instruction *bodyTerm, *exitTerm;
         Value *cmp = BH.CreateIsNotNull(Idx); 
         SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
