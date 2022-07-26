@@ -143,7 +143,7 @@ def CFGConversion : FunctionPass<"cfg-conversion"> {
   }];
   let constructor = "::fir::createFirToCfgPass()";
   let dependentDialects = [
-    "fir::FIROpsDialect", "mlir::StandardOpsDialect"
+    "fir::FIROpsDialect", "mlir::StandardOpsDialect", "mlir::scf::SCFDialect"
   ];
   let options = [
     Option<"forceLoopToExecuteOnce", "always-execute-loop-body", "bool",

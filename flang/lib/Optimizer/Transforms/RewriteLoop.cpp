@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/CommandLine.h"
 
@@ -136,105 +137,46 @@ class CfgConcurrentLoopConv : public mlir::OpRewritePattern<fir::DoConcurrentLoo
 public:
   using OpRewritePattern::OpRewritePattern;
 
-  CfgConcurrentLoopConv(mlir::MLIRContext *ctx, bool forceLoopToExecuteOnce)
-      : mlir::OpRewritePattern<fir::DoConcurrentLoopOp>(ctx),
-        forceLoopToExecuteOnce(forceLoopToExecuteOnce) {}
+  CfgConcurrentLoopConv(mlir::MLIRContext *ctx)
+      : mlir::OpRewritePattern<fir::DoConcurrentLoopOp>(ctx) {}
 
   mlir::LogicalResult
   matchAndRewrite(DoConcurrentLoopOp loop,
                   mlir::PatternRewriter &rewriter) const override {
-    auto loc = loop.getLoc();
 
-    // Create the start and end blocks that will wrap the DoLoopOp with an
-    // initalizer and an end point
-    auto *initBlock = rewriter.getInsertionBlock();
-    auto initPos = rewriter.getInsertionPoint();
-    auto *endBlock = rewriter.splitBlock(initBlock, initPos);
+    SmallVector<Value, 8> steps = {loop.getStep()} ; 
+    SmallVector<Value, 8> ivs = {loop.getBody()->getArgument(0)};  
+    SmallVector<Value, 8> upperBoundTuple = {loop.getUpperBound()};
+    SmallVector<Value, 8> lowerBoundTuple = {loop.getLowerBound()};
 
-    // Split the first DoLoopOp block in two parts. The part before will be the
-    // conditional block since it already has the induction variable and
-    // loop-carried values as arguments.
-    auto *conditionalBlock = &loop.getRegion().front();
-    conditionalBlock->addArgument(rewriter.getIndexType());
-    auto *firstBlock =
-        rewriter.splitBlock(conditionalBlock, conditionalBlock->begin());
-    auto *lastBlock = &loop.getRegion().back();
+    
+    scf::ParallelOp par = rewriter.create<scf::ParallelOp>(
+      loop.getLoc(), lowerBoundTuple, upperBoundTuple, steps,  
+      [&](OpBuilder& ob, Location l, ValueRange newivs){
+        BlockAndValueMapping map;
+        for(auto dim : llvm::zip(ivs, newivs)){
+          Value iv, newiv;
+          std::tie(iv, newiv) = dim; 
+          map.map(iv, newiv);
+        }
+        map.map(loop.getBody(), ob.getBlock()); 
+        for(auto &op : *loop.getBody()){
+          if(auto term = dyn_cast<fir::ResultOp>(op)){
+            auto yo = ob.create<scf::YieldOp>(l); 
+            map.map(op.getResults(), yo->getResults()); 
+          } else {
+            auto newop = ob.clone(op, map); 
+            map.map(op.getResults(), newop->getResults()); 
+          }
+        }
+      }); 
 
-    // Move the blocks from the DoConcurrentLoopOp between initBlock and endBlock
-    rewriter.inlineRegionBefore(loop.getRegion(), endBlock);
+    
+    rewriter.replaceOp(loop, par.results());
 
-    // Get loop values from the DoConcurrentLoopOp
-    auto low = loop.getLowerBound();
-    auto high = loop.getUpperBound();
-    assert(low && high && "must be a Value");
-    auto step = loop.getStep();
-
-    // Initalization block
-    rewriter.setInsertionPointToEnd(initBlock);
-    auto diff = rewriter.create<mlir::arith::SubIOp>(loc, high, low);
-    auto distance = rewriter.create<mlir::arith::AddIOp>(loc, diff, step);
-    mlir::Value iters =
-        rewriter.create<mlir::arith::DivSIOp>(loc, distance, step);
-
-    if (forceLoopToExecuteOnce) {
-      auto zero = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
-      auto cond = rewriter.create<mlir::arith::CmpIOp>(
-          loc, mlir::arith::CmpIPredicate::sle, iters, zero);
-      auto one = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
-      iters = rewriter.create<mlir::SelectOp>(loc, cond, one, iters);
-    }
-
-    llvm::SmallVector<mlir::Value> loopOperands;
-    loopOperands.push_back(low);
-    auto operands = loop.getIterOperands();
-    loopOperands.append(operands.begin(), operands.end());
-    loopOperands.push_back(iters);
-
-    rewriter.create<mlir::BranchOp>(loc, conditionalBlock, loopOperands);
-
-    // Last loop block
-    auto *terminator = lastBlock->getTerminator();
-    rewriter.setInsertionPointToEnd(lastBlock);
-    auto iv = conditionalBlock->getArgument(0);
-    mlir::Value steppedIndex =
-        rewriter.create<mlir::arith::AddIOp>(loc, iv, step);
-    assert(steppedIndex && "must be a Value");
-    auto lastArg = conditionalBlock->getNumArguments() - 1;
-    auto itersLeft = conditionalBlock->getArgument(lastArg);
-    auto one = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    mlir::Value itersMinusOne =
-        rewriter.create<mlir::arith::SubIOp>(loc, itersLeft, one);
-
-    llvm::SmallVector<mlir::Value> loopCarried;
-    loopCarried.push_back(steppedIndex);
-    auto begin = loop.getFinalValue() ? std::next(terminator->operand_begin())
-                                      : terminator->operand_begin();
-    loopCarried.append(begin, terminator->operand_end());
-    loopCarried.push_back(itersMinusOne);
-    rewriter.create<mlir::BranchOp>(loc, conditionalBlock, loopCarried);
-    rewriter.eraseOp(terminator);
-
-    // Conditional block
-    rewriter.setInsertionPointToEnd(conditionalBlock);
-    auto zero = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto comparison = rewriter.create<mlir::arith::CmpIOp>(
-        loc, mlir::arith::CmpIPredicate::sgt, itersLeft, zero);
-
-    rewriter.create<mlir::CondBranchOp>(loc, comparison, firstBlock,
-                                        llvm::ArrayRef<mlir::Value>(), endBlock,
-                                        llvm::ArrayRef<mlir::Value>());
-
-    // The result of the loop operation is the values of the condition block
-    // arguments except the induction variable on the last iteration.
-    auto args = loop.getFinalValue()
-                    ? conditionalBlock->getArguments()
-                    : conditionalBlock->getArguments().drop_front();
-    rewriter.replaceOp(loop, args.drop_back());
-    return success();
+    return success(); 
   }
 
-private:
-  bool forceLoopToExecuteOnce;
 };
 
 /// Convert `fir.if` to control-flow
@@ -418,8 +360,10 @@ public:
       target.addIllegalOp<DoLoopOp>();
     }
     if (transformDoConcurrentLoop) {
-      patterns.insert<CfgConcurrentLoopConv>(context, forceLoopToExecuteOnce);
+      target.addLegalDialect<scf::SCFDialect>(); 
+      target.addLegalOp<scf::ParallelOp>(); 
       target.addIllegalOp<DoConcurrentLoopOp>();
+      patterns.insert<CfgConcurrentLoopConv>(context);
     }
     if (transformIf) {
       patterns.insert<CfgIfConv>(context, forceLoopToExecuteOnce);
