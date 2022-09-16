@@ -11,16 +11,17 @@
 
 #include <stdint.h>
 
-#cmakedefine01 KITSUNE_ENABLE_OPENMP_TARGET
-#cmakedefine01 KITSUNE_ENABLE_QTHREADS_TARGET
-#cmakedefine01 KITSUNE_ENABLE_CUDATK_TARGET
-#cmakedefine01 KITSUNE_ENABLE_REALM_TARGET
-#cmakedefine01 KITSUNE_ENABLE_OPENCL_TARGET
-#cmakedefine01 KITSUNE_ENABLE_HIP_TARGET
+#cmakedefine01 KITSUNE_ENABLE_OPENMP_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_QTHREADS_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_CUDA_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_GPU_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_REALM_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_OPENCL_ABI_TARGET
+#cmakedefine01 KITSUNE_ENABLE_HIP_ABI_TARGET
 
 #include "kitsune_rt.h"
 
-#if defined(KITSUNE_ENABLE_OPENCL_TARGET)
+#if defined(KITSUNE_ENABLE_OPENCL_ABI_TARGET)
 #define ocl_mmap(a, n) __kitsune_opencl_mmap_marker((void*)a, n)
 #ifdef __cplusplus
 extern "C" {

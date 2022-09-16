@@ -1361,6 +1361,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
         if (Tok.isOneOf(tok::kw___private, tok::kw___global, tok::kw___local,
                         tok::kw___constant, tok::kw___generic)) {
           ParseOpenCLQualifiers(DS.getAttributes());
+	  ParseKitsuneMemAccessQualifiers(DS.getAttributes());
           ConsumeToken();
         }
 

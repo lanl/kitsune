@@ -79,6 +79,8 @@ def warn_drv_unknown_cuda_version: Warning<
   InGroup<CudaUnknownVersion>;
 def err_drv_cuda_host_arch : Error<"unsupported architecture '%0' for host compilation.">;
 def err_drv_mix_cuda_hip : Error<"Mixed Cuda and HIP compilation is not supported.">;
+def err_drv_mix_tapir_cuda_hip : Error<"Mixed Tapir and Cuda/HIP compilation is currently not supported.">;
+def err_drv_mix_tapir_omp_offload : Error<"Mixed Tapir and OpenMP offload compilation is currently not supported.">;
 def err_drv_bad_target_id : Error<"Invalid target ID: %0 (A target ID is a processor name "
   "followed by an optional list of predefined features post-fixed by a plus or minus sign deliminated "
   "by colon, e.g. 'gfx908:sramecc+:xnack-')">;
@@ -639,18 +641,20 @@ def err_drv_cannot_read_kitsune_cfg_file : Error<
 // catching configuration issues at build is a pain w/out a ton of #ifdef
 // litter.  we instead opt to warning users in cases where the options are
 // used but were not enabled at build time.
-def warn_drv_kokkos_disabled : Warning<
+def warn_drv_kitsune_kokkos_disabled : Warning<
   "kokkos support was not enabled when clang was built.">;
-def warn_drv_openmp_target_disabled : Warning<
+def warn_drv_tapir_openmp_target_disabled : Warning<
   "the openmp runtime ABI transform target was not enabled when clang was built.">;
-def warn_drv_qthreads_target_disabled: Warning<
+def warn_drv_tapir_qthreads_target_disabled: Warning<
   "the qthreads runtime ABI transform target was not enabled when clang was built.">;
-def warn_drv_realm_target_disabled: Warning<
+def warn_drv_tapir_realm_target_disabled: Warning<
   "the realm runtime ABI transform target was not enabled when clang was built.">;
-def warn_drv_cuda_tapir_target_disabled: Warning<
+def warn_drv_tapir_cuda_target_disabled: Warning<
   "the cuda toolkit runtime ABI transform target was not enabled when clang was built.">;
-def warn_drv_hip_target_disabled: Warning<
+def warn_drv_tapir_hip_target_disabled: Warning<
   "the hip runtime ABI transform target was not enabled when clang was built.">;
-def warn_drv_opencl_target_disabled: Warning<
+def warn_drv_tapir_opencl_target_disabled: Warning<
   "the opencl toolkit runtime ABI transform target was not enabled when clang was built.">;
+def warn_drv_tapir_gpu_target_disabled: Warning<
+  "the gpu runtime ABI transform target was not enabled when clang was built.">;
 }

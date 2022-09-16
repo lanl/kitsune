@@ -10171,6 +10171,13 @@ def err_opencl_multiple_access_qualifiers : Error<
 def note_opencl_typedef_access_qualifier : Note<
   "previously declared '%0' here">;
 
+// Kitsune memaccess qualifier
+def err_kitsune_multiple_access_qualifiers : Error<
+  "multiple access qualifiers">;
+def note_kitsune_typedef_access_qualifier : Note<
+  "previously declared '%0' here">;
+
+
 // OpenCL v2.0 s6.12.5 Blocks restrictions
 def err_opencl_block_storage_type : Error<
   "the __block storage type is not permitted">;

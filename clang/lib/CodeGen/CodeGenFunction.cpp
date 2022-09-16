@@ -659,6 +659,22 @@ void CodeGenFunction::EmitOpenCLKernelMetadata(const FunctionDecl *FD,
   }
 }
 
+void CodeGenFunction::EmitKitsuneMetadata(const FunctionDecl *FD,
+					  llvm::Function *Fn) {
+  CGM.GenKitsuneArgMetadata(Fn, FD, this);
+
+  llvm::LLVMContext &Context = getLLVMContext();
+  
+  if (const KitsuneMemAccessAttr *A = FD->getAttr<KitsuneMemAccessAttr>()){
+    if (A->isWriteOnly()) 
+      Fn->addFnAttr("kitsune.writeonly");
+    else if (A->isReadWrite()) 
+      Fn->addFnAttr("kitsune.readwrite");
+    else 
+      Fn->addFnAttr("kitsune.readonly");
+  }
+}
+
 /// Determine whether the function F ends with a return stmt.
 static bool endsWithReturn(const Decl* F) {
   const Stmt *Body = nullptr;
@@ -929,6 +945,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
   if (FD && getLangOpts().OpenCL) {
     // Add metadata for a kernel function.
     EmitOpenCLKernelMetadata(FD, Fn);
+  }
+  if (FD && getLangOpts().Kitsune) {
+    EmitKitsuneMetadata(FD, Fn);
   }
 
   // If we are checking function types, emit a function type signature as

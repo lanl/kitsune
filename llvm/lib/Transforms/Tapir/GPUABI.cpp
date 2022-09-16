@@ -64,8 +64,8 @@ void GPUABI::postProcessHelper(Function &F) {
 void GPUABI::processSubTaskCall(TaskOutlineInfo &TOI, DominatorTree &DT) {
 }
 
-LoopOutlineProcessor *GPUABI::getLoopOutlineProcessor(
-    const TapirLoopInfo *TL) const {
+LoopOutlineProcessor *
+GPUABI::getLoopOutlineProcessor(const TapirLoopInfo *TL) {
   if(!LOP) 
     return new LLVMLoop(M);
   return LOP;
@@ -365,7 +365,6 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   delete PassManager;
 
   LLVM_DEBUG(dbgs() << "LLVM Module after passes: " << LLVMM);
-
 
   // generate llvm kernel code
   SmallVector<char, 1<<20> mbuf;

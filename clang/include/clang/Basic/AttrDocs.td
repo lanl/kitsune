@@ -429,16 +429,16 @@ def NoMergeDocs : Documentation {
   let Category = DocCatStmt;
   let Content = [{
 If a statement is marked ``nomerge`` and contains call expressions, those call
-expressions inside the statement will not be merged during optimization. This 
+expressions inside the statement will not be merged during optimization. This
 attribute can be used to prevent the optimizer from obscuring the source
 location of certain calls. For example, it will prevent tail merging otherwise
 identical code sequences that raise an exception or terminate the program. Tail
 merging normally reduces the precision of source location information, making
 stack traces less useful for debugging. This attribute gives the user control
-over the tradeoff between code size and debug information precision. 
+over the tradeoff between code size and debug information precision.
 
-``nomerge`` attribute can also be used as function attribute to prevent all 
-calls to the specified function from merging. It has no effect on indirect 
+``nomerge`` attribute can also be used as function attribute to prevent all
+calls to the specified function from merging. It has no effect on indirect
 calls.
   }];
 }
@@ -3577,7 +3577,7 @@ Whether a particular pointer may be "null" is an important concern when working
 with pointers in the C family of languages. The various nullability attributes
 indicate whether a particular pointer can be null or not, which makes APIs more
 expressive and can help static analysis tools identify bugs involving null
-pointers. Clang supports several kinds of nullability attributes: the 
+pointers. Clang supports several kinds of nullability attributes: the
 ``nonnull`` and ``returns_nonnull`` attributes indicate which function or
 method parameters and result types can never be null, while nullability type
 qualifiers indicate which pointer types can be null (``_Nullable``) or cannot
@@ -3753,7 +3753,7 @@ memory is not available rather than returning a null pointer:
 The ``returns_nonnull`` attribute implies that returning a null pointer is
 undefined behavior, which the optimizer may take advantage of. The ``_Nonnull``
 type qualifier indicates that a pointer cannot be null in a more general manner
-(because it is part of the type system) and does not imply undefined behavior, 
+(because it is part of the type system) and does not imply undefined behavior,
 making it more widely applicable
 }];
 }
@@ -5637,15 +5637,15 @@ def CFGuardDocs : Documentation {
   let Content = [{
 Code can indicate CFG checks are not wanted with the ``__declspec(guard(nocf))``
 attribute. This directs the compiler to not insert any CFG checks for the entire
-function. This approach is typically used only sparingly in specific situations 
-where the programmer has manually inserted "CFG-equivalent" protection. The 
-programmer knows that they are calling through some read-only function table 
-whose address is obtained through read-only memory references and for which the 
-index is masked to the function table limit. This approach may also be applied 
-to small wrapper functions that are not inlined and that do nothing more than 
-make a call through a function pointer. Since incorrect usage of this directive 
-can compromise the security of CFG, the programmer must be very careful using 
-the directive. Typically, this usage is limited to very small functions that 
+function. This approach is typically used only sparingly in specific situations
+where the programmer has manually inserted "CFG-equivalent" protection. The
+programmer knows that they are calling through some read-only function table
+whose address is obtained through read-only memory references and for which the
+index is masked to the function table limit. This approach may also be applied
+to small wrapper functions that are not inlined and that do nothing more than
+make a call through a function pointer. Since incorrect usage of this directive
+can compromise the security of CFG, the programmer must be very careful using
+the directive. Typically, this usage is limited to very small functions that
 only call one function.
 
 `Control Flow Guard documentation <https://docs.microsoft.com/en-us/windows/win32/secbp/pe-metadata>`
@@ -6073,9 +6073,9 @@ memory operations within the same strand.
 
 def TapirDocs : DocumentationCategory<"Tapir Attributes"> {
   let Content = [{
-Tapir and Kitsune introduce custom C++ attributres that let developer 
-control behaviors at the source code level vs. only through command line 
-arguments.  
+Tapir and Kitsune introduce custom C++ attributres that let developer
+control behaviors at the source code level vs. only through command line
+arguments.
   }];
 }
 
@@ -6085,23 +6085,23 @@ def TapirRTDocs : Documentation {
 
 **Experimental**
 
-The kitsune/tapir runtime target attribute `rt_target` let's developers target a 
-specific runtime at the source level vs. using a command line argument to 
-apply the target to all constructs.  The current target runtime are: 
+The kitsune/tapir runtime target attribute `rt_target` let's developers target a
+specific runtime at the source level vs. using a command line argument to
+apply the target to all constructs.  The current target runtime are:
 
-- cilk     : Cilk runtime system. 
-- cuda     : Nvidia's cuda runtime. 
-- hip      : AMD's (cuda-ish) hip runtime.  
-- libomp   : The OpenMP runtime 
-- qthreads : The Qthreads library 
+- cilk     : Cilk runtime system.
+- cuda     : Nvidia's cuda runtime.
+- hip      : AMD's (cuda-ish) hip runtime.
+- libomp   : The OpenMP runtime
+- qthreads : The Qthreads library
 - realm    : The Realm runtime (lower level of the Legion Programming System)
-- rocm     : AMD's Rocm runtime. 
-- zero     : Intel's Level Zero runtime. 
+- rocm     : AMD's Rocm runtime.
+- zero     : Intel's Level Zero runtime.
 
-Example: 
+Example:
 
 .. code-block:: c++
-  
+
   [[kitsune:rt_target("cilk")]]
   forall(...) {
   }];
@@ -6113,18 +6113,43 @@ def TapirStrategyDocs : Documentation {
 
 **Experimental**
 
-The tapir/kitsune strategy attribute `strategy` let's developers target a 
-specific execution strategy at the source level vs. using a command line 
-argument to apply the approach source (construct) code wide.  The current 
-strategies are: 
+The tapir/kitsune strategy attribute `strategy` let's developers target a
+specific execution strategy at the source level vs. using a command line
+argument to apply the approach source (construct) code wide.  The current
+strategies are:
 
-- dac      : execute using a divide-and-conquer approach. 
-- seq      : force sequential executition.  
-- gpu      : use a GPU-centric strategy. 
+- dac      : execute using a divide-and-conquer approach.
+- seq      : force sequential executition.
+- gpu      : use a GPU-centric strategy.
 
 .. code-block:: c++
-  
+
   [[kitsune:strategy("dac")]]
   forall(...) {
+  }];
+}
+
+def KitsuneMemAccessDocs : Documentation {
+  let Category = TapirDocs;
+  let Content = [{
+
+The kitsune memory access attributes lets programmers inform the compiler of
+how variables are used so the compiler can make better decisions for analysis
+and optimization operations.  This information is not verified in any way; it's
+entirely up to the programmer to communicate the details correctly (i.e., it
+might entirely lead to errors in code generation if the attributes are
+inaccurate).
+
+- _readonly	 : these variables are only read, never written to
+- _writeonly : these variables are only written to, never read
+- _readwrite : these variables are both read and written, but no ordering of
+               those two operations is implied
+
+.. code-block:: c++
+
+   bool funcname (_readonly float *A,
+                  _readonly float *B,
+                  _writeonly float *C) {
+    ...
   }];
 }

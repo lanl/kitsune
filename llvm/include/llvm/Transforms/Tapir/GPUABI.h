@@ -50,7 +50,7 @@ public:
     override final;
 
   LoopOutlineProcessor *getLoopOutlineProcessor(const TapirLoopInfo *TL)
-    const override final;
+    override final;
 };
 
 class LLVMLoop : public LoopOutlineProcessor {

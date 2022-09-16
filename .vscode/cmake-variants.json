@@ -1,0 +1,153 @@
+{
+    "buildType": {
+        "default": "Debug",
+        "choices": {
+            "Debug": {
+                "short": "Debug",
+                "long": "Emit debug information without performing optimizations",
+                "buildType": "Debug",
+                "settings": {
+                    "LLVM_OPTIMIZED_TABLEGEN" : "ON"
+                }               
+            },
+            "Release": {
+                "short": "Release",
+                "long": "Standard build with performing optimizations",
+               "buildType": "Release",
+               "settings": {
+                    "LLVM_ENABLE_ASSERTIONS" : "OFF"
+               }
+            },
+            "Minsize": {
+                "short": "MinSizeRel",
+                "long": "Optimize for smallest binary size",
+                "buildType": "MinSizeRel"
+            },
+            "Reldeb": {
+                "short": "RelWithDebInfo",
+                "long": "Perform optimizations AND include debugging information",
+                "buildType": "RelWithDebInfo"
+            }
+        }
+    },
+    "platform": {
+        "default": "host-linux",
+        "description": "Selects the type of platform",
+        "choices": {
+            "host-linux": {
+                "short": "host-linux",
+                "long": "Native build for Linux host",
+                "settings": {
+                    "LLVM_USE_LINKER" : "lld",
+                    "CMAKE_C_COMPILER_LAUNCHER" : "ccache",
+                    "CMAKE_CXX_COMPILER_LAUNCHER" : "ccache",
+                    "LLDB_RELOCATABLE_PYTHON" : "1"
+                }
+            },
+            "host-woa": {
+                "short": "host-woa",
+                "long": "Native build for AArch64 Windows host",
+                "settings": {
+                    "LLVM_NATIVE_ARCH" : "AArch64",
+                    "LLVM_HOST_TRIPLE" : "aarch64-windows-msvc",
+                    "CMAKE_C_FLAGS" : "--target=aarch64-windows-msvc",
+                    "CMAKE_CXX_FLAGS" : "--target=aarch64-windows-msvc",                  
+                    "LLVM_DEFAULT_TARGET_TRIPLE" : "aarch64-windows-msvc",
+                    
+                    "LLVM_ENABLE_RTTI" : "True",
+                    "CMAKE_CXX_STANDARD" : "14",
+                    "CMAKE_CXX_STANDARD_REQUIRED" : "YES",
+                    "HAVE_CXX_ATOMICS_WITHOUT_LIB" : "True",
+                    "HAVE_CXX_ATOMICS64_WITHOUT_LIB" : "True",
+                    
+                    "SWIG_EXECUTABLE" : "C:/BuildTools/swigwin-4.0.2/swig.exe",
+                    "PYTHON_HOME" : "C:/BuildTools/cpython-v3.8.5-win-arm64",
+                    "LLDB_ENABLE_PYTHON" : "0",
+                 
+                    "CMAKE_MAKE_PROGRAM" : "C:/Users/tcwg/source/omair/ninja/ninja.exe",                 
+                    "CMAKE_LINKER" : "C:/BuildTools/LLVM-13.0.0-woa64/bin/lld-link.exe",
+                    "CMAKE_CXX_LINK_EXECUTABLE" :"<CMAKE_LINKER> <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+                }
+            },
+
+            "host-winx64": {
+                "short": "host-winx64",
+                "long": "Native build for x86_64 Windows host",
+                "settings": {
+                    "LLVM_NATIVE_ARCH" : "x86_64",
+                    "LLVM_HOST_TRIPLE" : "x86_64-windows-msvc",
+                    "LLVM_DEFAULT_TARGET_TRIPLE" : "x86_64-windows-msvc",
+                    "LLVM_FORCE_USE_OLD_TOOLCHAIN" : "True",
+                    "LLVM_ENABLE_ASSERTIONS" : "False",
+                    "CLANG_DEFAULT_LINKER" : "lld",
+                    "LLDB_USE_LLDB_SERVER" : "True"
+		}
+            },
+
+            "cross-aarch64-linux" : {
+                "short": "cross-aarch64-linux",
+                "long": "Cross build for AArch64 Linux target",
+                "settings": {
+                    "LLVM_TARGETS_TO_BUILD" : "AArch64",
+                    "LLVM_HOST_TRIPLE" : "aarch64-linux-gnu",
+                    "LLDB_TEST_COMPILER" : "aarch64-linux-gnu-gcc",
+                    
+                    "LLVM_USE_LINKER" : "gold",
+                    "CMAKE_CROSSCOMPILING" : "ON",
+                    "CMAKE_C_COMPILER_LAUNCHER" : "ccache",
+                    "CMAKE_CXX_COMPILER_LAUNCHER" : "ccache"
+                }
+            },
+
+            "cross-arm-linux" :{
+                "short": "cross-arm-linux",
+                "long": "Cross build for Arm Linux target",
+                "settings": {
+                    "LLVM_TARGETS_TO_BUILD" : "ARM",
+                    "LLVM_HOST_TRIPLE" : "arm-linux-gnueabihf",
+                    "LLDB_TEST_COMPILER" : "arm-linux-gnueabihf-gcc",
+
+                    "LLVM_USE_LINKER" : "gold", 
+                    "CMAKE_CROSSCOMPILING" : "ON",
+                    "CMAKE_C_COMPILER_LAUNCHER" : "ccache",
+                    "CMAKE_CXX_COMPILER_LAUNCHER" : "ccache"
+                }
+            }
+        }
+    },
+
+    "configs": {
+        "default": "llvm",
+        "description": "Selects the config to build",
+        "choices": {
+            "llvm": {
+                "short": "llvm",
+                "long": "LLVM build configuration",
+                "settings": {
+                    "LLVM_LIT_ARGS" : ["-svj 8"],
+                    "LLVM_PARALLEL_LINK_JOBS" : "4",
+                    "LLVM_ENABLE_PROJECTS" : ["lldb", "clang", "lld"]
+                }
+            },
+            "lldb-server": {
+                "short": "lldb-server",
+                "long": "LLDB server build configuration",
+                "settings": {     
+                    "LLVM_LIT_ARGS" : ["-svj 8"],
+                    "LLVM_PARALLEL_LINK_JOBS" : "4",
+                    "LLVM_ENABLE_PROJECTS" : ["lldb", "clang"],
+
+                    "LLDB_ENABLE_PYTHON" : "0",
+                    "LLDB_ENABLE_CURSES" : "0",
+                    "LLDB_ENABLE_LIBEDIT" : "0",
+                    "LLDB_EXPORT_ALL_SYMBOLS" : "1",
+
+                    "LLVM_TABLEGEN" : "${workspaceFolder}/build/Release/host-linux/bin/llvm-tblgen",
+                    "LLDB_TABLEGEN" : "${workspaceFolder}/build/Release/host-linux/bin/lldb-tblgen",
+                    "CLANG_TABLEGEN" : "${workspaceFolder}/build/Release/host-linux/bin/clang-tblgen"
+                }
+            }
+        }
+    }
+}
+

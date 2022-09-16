@@ -219,6 +219,7 @@ def AsTypeExpr : StmtNode<Expr>;
 // Tapir Extensions.
 def SyncStmt : StmtNode<Stmt>;
 def SpawnStmt : StmtNode<Stmt>;
+// Kitsune Extensions. 
 def ForallStmt : StmtNode<Stmt>;
 def CXXForallRangeStmt : StmtNode<Stmt>;
 

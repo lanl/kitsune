@@ -552,6 +552,11 @@ def int_prefetch
                 [IntrInaccessibleMemOrArgMemOnly, IntrWillReturn,
                  ReadOnly<ArgIndex<0>>, NoCapture<ArgIndex<0>>,
                  ImmArg<ArgIndex<1>>, ImmArg<ArgIndex<2>>]>;
+def int_asyncprefetch
+    : DefaultAttrsIntrinsic<[], [ llvm_anyptr_ty, llvm_i32_ty, llvm_i64_ty ],
+                [IntrInaccessibleMemOrArgMemOnly, IntrWillReturn,
+                 ReadOnly<ArgIndex<0>>, NoCapture<ArgIndex<0>>,
+                 ImmArg<ArgIndex<1>>, ImmArg<ArgIndex<2>>]>;
 def int_pcmarker      : DefaultAttrsIntrinsic<[], [llvm_i32_ty]>;
 
 def int_readcyclecounter : DefaultAttrsIntrinsic<[llvm_i64_ty]>;

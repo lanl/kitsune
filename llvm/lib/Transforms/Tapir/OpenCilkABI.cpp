@@ -953,7 +953,7 @@ bool OpenCilkABI::processOrdinaryFunction(Function &F, BasicBlock *TFEntry) {
 void OpenCilkABI::postProcessHelper(Function &F) {}
 
 LoopOutlineProcessor *
-OpenCilkABI::getLoopOutlineProcessor(const TapirLoopInfo *TL) const {
+OpenCilkABI::getLoopOutlineProcessor(const TapirLoopInfo *TL) {
   if (UseRuntimeCilkFor)
     return new RuntimeCilkFor(M);
   return nullptr;

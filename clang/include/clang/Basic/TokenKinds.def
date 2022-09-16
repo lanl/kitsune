@@ -271,6 +271,7 @@ PUNCTUATOR(caretcaret,            "^^")
 //   KEYOPENCLC   - This is a keyword in OpenCL C
 //   KEYOPENCLCXX - This is a keyword in C++ for OpenCL
 //   KEYNOOPENCL  - This is a keyword that is not supported in OpenCL
+//   KEYKITSUNE   - This is a keyword in Kitsune
 //   KEYALTIVEC - This is a keyword in AltiVec
 //   KEYZVECTOR - This is a keyword for the System z vector extensions,
 //                which are heavily based on AltiVec
@@ -467,6 +468,10 @@ KEYWORD(_Cilk_scope                 , KEYALL)
 KEYWORD(_kitsune_spawn              , KEYKITSUNE)
 KEYWORD(_kitsune_sync               , KEYKITSUNE)
 KEYWORD(_kitsune_forall             , KEYKITSUNE)
+// Kitsune memaccess qualifiers
+KEYWORD(_readonly                    , KEYKITSUNE)
+KEYWORD(_writeonly                   , KEYKITSUNE)
+KEYWORD(_readwrite                   , KEYKITSUNE)
 
 // MSVC12.0 / VS2013 Type Traits
 TYPE_TRAIT_1(__is_destructible, IsDestructible, KEYMS)

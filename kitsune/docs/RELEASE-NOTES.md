@@ -2,34 +2,95 @@
 
 Kitsune follows the LLVM version numbering scheme and thus adopts the base
 functionality of the corresponding LLVM release.  In the sections below each
-release includes this version number for reference and a pointer to the corresponding 
+release includes this version number for reference and a pointer to the corresponding
 set of LLVM release notes.
 
-### Release 10.0.1 (08-XX-2021 update)
+### Release 13.0.1 RC 2 
 
-__Date__: August XX, 2021 
-__Internal/ECP Release Milestone: ST_NS-XX-YYYY (__tagged__)
+  * Added features for correct registration of generated executables with the
+    CUDA toolchain.  This allows common tools such as the compute sanitizer and
+    cuobjdump to work correctly with Kitsune generated exeutables.
+  * Restructuring of the runtime system for more flexible targeting of both
+    just-in-time and static compilation targets.  This incldues a bit more
+    separation of targets (e.g., AMD and NVIDIA).  
+  * New experiments and testing codes for validation of correctness, performance,
+    and profiling across architectures.
+  * New code generation and runtime features to support improved management, and
+    semi-automatic data movement.
+  * Support for multiple levels of tailored optimization passes in the mid-stage
+    of compilation.
+  * Bug fixes, performance enhancements, and feature enhancements for
+    troubleshooting and debugging the compiler and runtime. 
 
-**TODO**: Can we catch up (merge) with LLVM 12.x/13.x???
 
-[LLVM 10 Release Notes](https://releases.llvm.org/10.0.0/docs/ReleaseNotes.html)
+### Release 13.0.1 
 
-### What's New 
+  * Updated support for LLVM 13.x feature set, including a merge with a 
+    corresponding branch of the OpenCilk/Tapir branch. 
+  * Reworked version of the CUDA ABI transformation to simplify code for tailored
+    vs. full blown CUDA front-end support.  Many new command line features added 
+    to support PTX-to-fatbinary stages. 
+  * LLVM 13.x contains AMD GPU fixes and updates that should allow us to complete 
+    the AMD ABI transformation -- this will come in a later release. 
+  * Several build system tweaks and changes to the build (cache file) for proper 
+    behaviors in LLVM 13.x code base. 
+  * Support for a subset of Kokkos MD range merged into 13.x code base with some 
+    fixes. 
+  * GPU ABI transform needs to be updated (likely sharing code with the CUDA ABI 
+    transform to support unique kernel naming and other associated features that
+    are currently not supported).  This will come as part of a an interim release.
+  * Additional tweaks and refactoring to the GPU runtime (ABI) tranform target 
+    library to provide direct CUDA targets as well as the existing JIT-based 
+    target.  Renamed API entry points for CUDA to reduce likihood of conflicts.
+    (more to do here)
+  * 
 
-  * Overhaul of the build configuration to account for new bitcode interfaces to runtime targets, better incorporation of using examples for testing across enabled architectures and runtime targets. 
+### Release 12.0.1
+
+  * Two new code generation paths for GPU support. This includes:
+      - A shared GPU runtime target library to simplify/unify code generation across
+        GPU architectures from AMD, Intel, and NVIDIA.  The current library focuses
+        on a common JIT-based approach to code generation and requires "UVM" memory
+        allocations to function correctly.
+      - NVIDIA code generation is mostly functional and stable for the limited
+        constructs support (Kokkos and ``forall``).
+      - The AMD code generation is broken and we await fixes in LLVM 13+ releases to
+        address these issues (now released -- we're merging with LLVM 13 now
+        and will release an update once this is tested and complete accross the
+        Tapir and Kitsune code base).  As of now AMD support should be considered
+        buggy (at best) and broken in most cases.  We discourage its use with this
+        release.
+      - Basic (internal testing) of Intel GPU code generation is working but needs
+        some significant effort and additional testing to harden and get in a reliable
+        state.
+      - Fixed GPU-target metadata copying for more reliable use in profiling and debugging
+        situations.
+      - Added environment variable hooks for JIT compiler behaviors (e.g., optimization
+        and debug flags).
+      - Tweaks to GPU runtime for compile-time code generation on NVIDIA architectures.
+  * Recognition and code generation for certain forms of Kokkos MD-range constructs.
+  * Clang code generation has been refactored to share implementation details between
+    Kokkos and various ``forall`` forms of code lowering.
+
+
+[LLVM 12 Release Notes](https://releases.llvm.org/12.0.1/docs/ReleaseNotes.html)
+
+### What's New
+
+  * Overhaul of the build configuration to account for new bitcode interfaces to runtime targets, better incorporation of using examples for testing across enabled architectures and runtime targets.
   * Support for some Kokkos MDRange constructs (nested loops).
-  * Updated progress on AMD GPU (HIP) code generation. 
-  * Significant update and overhaul to the libomp runtime ABI target. 
-  * Code refactoring to unify Kokoks and ``forall`` code generation infrastructure. 
+  * Updated progress on AMD GPU (HIP) code generation.
+  * Significant update and overhaul to the libomp runtime ABI target.
+  * Code refactoring to unify Kokoks and ``forall`` code generation infrastructure.
   * Exploring possibliities and restrictions of using NVIDIA's NVVM library with LLVM 10.x (and beyond).
-  * Improved internal error handling for bitcode loading cases that would previously crash the compiler. 
+  * Improved internal error handling for bitcode loading cases that would previously crash the compiler.
   * Additional bug fixes and compiler introduced race conditions as part of the ABI rutnime target code generation.
   * Improved flexbility by leveraging Clang's ``--config`` capabilities (should benefit advanced end users and developers by avoiding the need to rebuild the toolchain for certain use cases).
-  * Some updates to the documentation for building and using the toolchain. 
+  * Some updates to the documentation for building and using the toolchain.
 
 ### Release 10.0.1 (03-2021 update)
 
-__Date__: March 9, 2021 
+__Date__: March 9, 2021
 __Internal/ECP Release Milestone__: ST_NS-XX-YYYY (__tagged__)
 [__LLVM 10 Release Notes__](https://releases.llvm.org/10.0.0/docs/ReleaseNotes.html)
 
@@ -38,18 +99,18 @@ __Internal/ECP Release Milestone__: ST_NS-XX-YYYY (__tagged__)
 
 ### What's New
 
-  * Build and configuration bug fixes for various search paths libaries. 
+  * Build and configuration bug fixes for various search paths libaries.
 
-  * New CMake cache file for simplifying building for end-users and developers (helping to establish a fixed configuration set for release, testing, and reporting). 
+  * New CMake cache file for simplifying building for end-users and developers (helping to establish a fixed configuration set for release, testing, and reporting).
 
-  * New module files support for end-users and developers not leveraging Spack. 
+  * New module files support for end-users and developers not leveraging Spack.
 
-  * Initial Realm ABI lowering is present but should be considered unstable for this release.  Note the Realm ABI will require some updates to Legion/Realm to squash some bugs that were discovered during development and testing. 
+  * Initial Realm ABI lowering is present but should be considered unstable for this release.  Note the Realm ABI will require some updates to Legion/Realm to squash some bugs that were discovered during development and testing.
 
-  * NVIDIA/CUDA/PTX, AMD/HIP, Intel/LevelZero support is awaiting attribute support for data movement operations.  
+  * NVIDIA/CUDA/PTX, AMD/HIP, Intel/LevelZero support is awaiting attribute support for data movement operations.
 
 
-### Release 10.0.1 
+### Release 10.0.1
 
 __Date__: October 28, 2020
 __Internal/ECP Release Milestone__: ST-NS-01-1330 (__tagged__)
@@ -61,11 +122,11 @@ __Internal/ECP Release Milestone__: ST-NS-01-1330 (__tagged__)
 
 * Rebased to LLVM 10.0.1.
 
-* Squashed a nasty bug related to avoiding race conditions and type-based alias analysis 
-  (TBAA). Added some code to support early TBAA verification to make similar errors appear 
+* Squashed a nasty bug related to avoiding race conditions and type-based alias analysis
+  (TBAA). Added some code to support early TBAA verification to make similar errors appear
   earlier in the compilation stages (easier bug tracing).
 
-* Updates to some configuration details for different (new) runtime targets (e.g., OpenCL 
+* Updates to some configuration details for different (new) runtime targets (e.g., OpenCL
   and a wrapper around CUDA for simplifying code generation implementation).
 
 * Improved __``forall``__ support and bug fixes (traditional and range-based):
@@ -95,9 +156,9 @@ __Internal/ECP Release Milestone__: ST-NS-01-1330 (__tagged__)
   driver API is provided in this release.  It is not yet supported by our code
   generation but aims to simplify code generation by hiding complex data structures
   and CUDA-centric data types that make for cumbersome code generation. Source
-  and example program in kitsune/lib/CudaRT. 
+  and example program in kitsune/lib/CudaRT.
 
-* __Parallel IR (Tapir) updates__:  
+* __Parallel IR (Tapir) updates__:
   * __Verifier__: Add simple checks to verify that Tapir tasks have a valid
     structure and that ``sync`` regions are properly used.
   * __LoopSpawningTI__: Enable Tapir targets to maintain the same
@@ -133,11 +194,11 @@ __Internal/ECP Release Milestone__: ST-NS-01-1330 (__tagged__)
 
 ### Release 10.0.0
 
-__Date__: June 18, 2020  
+__Date__: June 18, 2020
 __Internal/ECP Release Milestone__: STNS01-11
 [__LLVM 10 Release Notes__](https://releases.llvm.org/10.0.0/docs/ReleaseNotes.html)
 
-* Rebased for LLVM 10.0.0. 
+* Rebased for LLVM 10.0.0.
 
 * __``forall``__ keyword support: Provides a parallel extension to standard C/C++
   ``for`` statements that enable parallel loop code generation.  The semantics of
@@ -149,7 +210,7 @@ __Internal/ECP Release Milestone__: STNS01-11
     range-based loops styles are supported.  Assuming there are thread safety
     guarantees, these features can be enabled using various types of iterators
     that include both integral and more complex C++-style iterators from the
-    STL.  
+    STL.
 
 * __C++ Attributes for Tapir Code Generation Hints__:
 
@@ -162,12 +223,12 @@ __Internal/ECP Release Milestone__: STNS01-11
 
     * Future functionality will allow for GPU and CPU targets to be mixed in
       application code -- this overcomes the limitations of a single target support
-      when using the ``-ftapir=runtime-target`` argument on the command line.  
+      when using the ``-ftapir=runtime-target`` argument on the command line.
 
 * __``spawn`` and ``sync`` Statements__:
   Although primarily used for development testing two new statements are also
   enabled in the ``-fkitsune`` mode of Clang.  The ``spawn`` and ``sync``
-  constructs support non-nested concurrency -- thus allowing interleaved tasks.  
+  constructs support non-nested concurrency -- thus allowing interleaved tasks.
   Conceptually a construct similar to ``forall`` can be captured via this
   construct:
 

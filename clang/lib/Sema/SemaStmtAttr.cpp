@@ -408,20 +408,13 @@ static Attr *handleOpenCLUnrollHint(Sema &S, Stmt *St, const ParsedAttr &A,
   return ::new (S.Context) OpenCLUnrollHintAttr(S.Context, A, UnrollFactor);
 }
 
-static Attr *handleTapirRTTargetAttr(Sema &S, Stmt *St, const ParsedAttr &A,
-				     SourceRange Range)
+static Attr *handleTapirTargetAttr(Sema &S, Stmt *St, const ParsedAttr &A,
+				   SourceRange Range)
 {
   // We only support a limited range of statement classes.
   // TODO: Add support for spawn and sync statements. 
   if (St->getStmtClass() == Stmt::ForallStmtClass || 
       St->getStmtClass() == Stmt::CXXForallRangeStmtClass) {
-
-    // A quick sanity check to make sure we haven't missed earler 
-    // tests for having kitsune mode enabled (-fkitsune). 
-    if (!S.getLangOpts().Kitsune) {
-      S.Diag(A.getLoc(), diag::warn_kitsune_not_enabled);
-      return nullptr;
-    }
 
     if (A.getNumArgs() != 1) {
       S.Diag(A.getLoc(), diag::err_tapir_target_attr_wrong_nargs);
@@ -435,13 +428,14 @@ static Attr *handleTapirRTTargetAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       return nullptr;
     } 
 
-    TapirRTTargetAttr::TapirRTTargetTy   rtTargetKind;
-    if (!TapirRTTargetAttr::ConvertStrToTapirRTTargetTy(targetStr, rtTargetKind)) {
-       S.Diag(A.getLoc(), diag::err_tapir_target_unknown) << targetStr << argLoc;
+    TapirTargetAttr::TapirTargetAttrTy  tapirTK;
+    if (!TapirTargetAttr::ConvertStrToTapirTargetAttrTy(targetStr, tapirTK)) {
+       S.Diag(A.getLoc(), diag::err_tapir_target_unknown)
+	 << targetStr << argLoc;
        return nullptr;
     }
 
-    return ::new(S.Context)TapirRTTargetAttr(S.Context, A, rtTargetKind);
+    return ::new(S.Context)TapirTargetAttr(S.Context, A, tapirTK);
   } else {
     // Unsupported statement class encountered... 
     S.Diag(A.getLoc(), diag::warn_tapir_target_attr_bad_stmt_class);
@@ -531,6 +525,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleLikely(S, St, A, Range);
   case ParsedAttr::AT_Unlikely:
     return handleUnlikely(S, St, A, Range);
+  case ParsedAttr::AT_TapirTarget:
+    return handleTapirTargetAttr(S, St, A, Range);    
   default:
     // N.B., ClangAttrEmitter.cpp emits a diagnostic helper that ensures a
     // declaration attribute is not written on a statement, but this code is

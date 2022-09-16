@@ -78,9 +78,9 @@ struct TaskOutlineInfo {
   // of the original detach instruction.  For an outlined Tapir loop, this
   // block corresponds to the normal exit block after the loop latch.
   BasicBlock *ReplRet = nullptr;
-  
+
   // Task that corresponds to the task outline
-  Value* SR = nullptr; 
+  Value* SR = nullptr;
 
   // Basic block denoting the unwind destination of an invocation of the
   // outlined helper function.  This block corresponds to the unwind block of
@@ -309,6 +309,10 @@ public:
   virtual void postProcessFunction(Function &F,
                                    bool ProcessingTapirLoops = false) = 0;
 
+  // Process a host module at the end of lowering all functions within the
+  // module.
+  virtual void postProcessModule() { return; };
+
   // Process a generated helper Function F produced via outlining, at the end of
   // the lowering process.
   virtual void postProcessHelper(Function &F) = 0;
@@ -317,7 +321,7 @@ public:
 
   // Get the LoopOutlineProcessor associated with this Tapir target.
   virtual LoopOutlineProcessor *
-  getLoopOutlineProcessor(const TapirLoopInfo *TL) const {
+  getLoopOutlineProcessor(const TapirLoopInfo *TL) {
     return nullptr;
   }
 };
@@ -412,6 +416,13 @@ public:
                                     const ValueSet &Args) const {
     return getIVArgIndex(F, Args) + 1;
   }
+
+  /// Process the TapirLoop before it is outlined -- just prior to the
+  /// outlining occurs.  This allows the VMap and related details to be
+  /// customized prior to outlining related operations (e.g. cloning of
+  /// LLVM constructs).
+  virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap)
+  { /* no-op */ }
 
   /// Processes an outlined Function Helper for a Tapir loop, just after the
   /// function has been outlined.

@@ -163,7 +163,7 @@ public:
   bool processOrdinaryFunction(Function &F, BasicBlock *TFEntry) override final;
 
   LoopOutlineProcessor *
-  getLoopOutlineProcessor(const TapirLoopInfo *TL) const override final;
+  getLoopOutlineProcessor(const TapirLoopInfo *TL) override final;
 };
 } // namespace llvm
 

@@ -12899,6 +12899,46 @@ particular, prefetches cannot trap and do not produce a value. On
 targets that support this intrinsic, the prefetch can provide hints to
 the processor cache for better performance.
 
+'``llvm.asyncprefetch``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare void @llvm.asyncprefetch(i64* <address>, i32 <rw>, i64 size)
+
+Overview:
+"""""""""
+
+EXPERIMENTAL: The '``llvm.asyncprefetch``' intrinsic is a hint to the code 
+generator to insert a data prefetch of ``size`` bytes of the data pointed 
+to by ``address``.  The ``rw`` parameter is a specifier for the intended 
+use of the data once it is local to a target device (not specified by the 
+intrinsic).  It should marked as read (0), write (1), or read-write (2) as 
+the primary data access operations on the data range.  
+
+This intrinsic differs from the ``llvm.prefetch`` intrinsic above
+as it is intended for much larger data transfers between memory spaces 
+(e.g., CPU to GPU). In general, ``asyncprefetch`` has no effect on the 
+behavior of the program but can change its performance characteristics.
+
+Arguments:
+""""""""""
+
+``address`` is the starting address of the data to be prefetched, 
+``size`` is the size of the data block that should be prefetched. 
+
+Semantics:
+""""""""""
+
+This intrinsic does not modify the behavior of the program. In
+particular, prefetches cannot trap and do not produce a value. On
+targets that support this intrinsic, the prefetch can provide 
+coarse-grained hints for better performance and compute and data 
+movement overlap.
+
 '``llvm.pcmarker``' Intrinsic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

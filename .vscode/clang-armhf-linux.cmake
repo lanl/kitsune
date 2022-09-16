@@ -1,0 +1,27 @@
+set(TARGET_TRIPLE "arm-linux-gnueabihf")
+
+set(CMAKE_C_COMPILER "/usr/bin/clang-10")
+
+set(CMAKE_CXX_COMPILER "/usr/bin/clang++-10")
+
+set(CMAKE_LIBRARY_ARCHITECTURE "${TARGET_TRIPLE}")
+
+execute_process(
+    COMMAND "gcc" -dumpversion
+    RESULT_VARIABLE HAD_ERROR
+    OUTPUT_VARIABLE GCC_V3
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(GCC_INC "/usr/${TARGET_TRIPLE}/include")
+
+set(CMAKE_C_FLAGS "-target ${TARGET_TRIPLE} -I/${GCC_INC} -I/${GCC_INC}/c++/${GCC_V3}/${TARGET_TRIPLE}")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
+
+execute_process(
+    COMMAND "gcc" -dumpmachine
+    RESULT_VARIABLE HAD_ERROR
+    OUTPUT_VARIABLE BUILD_ENV_TRIPLE
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(CMAKE_IGNORE_PATH "/usr/lib/${BUILD_ENV_TRIPLE}")

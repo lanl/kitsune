@@ -105,7 +105,7 @@ public:
 
   Stmt *getInit() { return SubExprs[INIT]; }
 
-  /// Retrieve the variable declared in this "for" statement, if any.
+  /// Retrieve the variable declared in this "forall" statement, if any.
   ///
   /// In the following example, "y" is the condition variable.
   /// \code
@@ -116,8 +116,9 @@ public:
   VarDecl *getConditionVariable() const;
   void setConditionVariable(const ASTContext &C, VarDecl *V);
 
-  /// If this ForStmt has a condition variable, return the faux DeclStmt
-  /// associated with the creation of that condition variable.
+  /// If this ForallStmt has a condition variable, return the faux
+  /// DeclStmt associated with the creation of that condition
+  /// variable.
   const DeclStmt *getConditionVariableDeclStmt() const {
     return reinterpret_cast<DeclStmt*>(SubExprs[CONDVAR]);
   }

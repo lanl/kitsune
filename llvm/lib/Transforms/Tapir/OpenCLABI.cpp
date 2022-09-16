@@ -64,7 +64,7 @@ void OpenCLABI::processSubTaskCall(TaskOutlineInfo &TOI, DominatorTree &DT) {
 }
 
 LoopOutlineProcessor *OpenCLABI::getLoopOutlineProcessor(
-    const TapirLoopInfo *TL) const {
+    const TapirLoopInfo *TL) {
   if(!LOP) 
     return new SPIRVLoop(M);
   return LOP;

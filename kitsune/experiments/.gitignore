@@ -1,0 +1,7 @@
+*.x86_64
+*.fbin
+*.o
+*.s 
+*.ll 
+*.tapir
+*.ptx

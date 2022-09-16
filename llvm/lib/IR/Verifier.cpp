@@ -615,7 +615,8 @@ static void forEachUser(const Value *User,
 
 void Verifier::visitGlobalValue(const GlobalValue &GV) {
   Assert(!GV.isDeclaration() || GV.hasValidDeclarationLinkage(),
-         "Global is external, but doesn't have external or weak linkage!", &GV);
+         "Global " + GV.getName().str() +
+	 " is external, but doesn't have external or weak linkage!", &GV);
 
   if (const GlobalObject *GO = dyn_cast<GlobalObject>(&GV))
     Assert(GO->getAlignment() <= Value::MaximumAlignment,
@@ -2083,7 +2084,8 @@ void Verifier::visitConstantExprsRecursively(const Constant *EntryC) {
     if (const auto *GV = dyn_cast<GlobalValue>(C)) {
       // Global Values get visited separately, but we do need to make sure
       // that the global value is in the correct module
-      Assert(GV->getParent() == &M, "Referencing global in another module!",
+      
+      Assert(GV->getParent() == &M, "Referencing global '" + GV->getName() + "' in another module!",
              EntryC, &M, GV, GV->getParent());
       continue;
     }
@@ -4548,8 +4550,9 @@ void Verifier::visitInstruction(Instruction &I) {
       Assert(OpArg->getParent() == BB->getParent(),
              "Referring to an argument in another function!", &I);
     } else if (GlobalValue *GV = dyn_cast<GlobalValue>(I.getOperand(i))) {
-      Assert(GV->getParent() == &M, "Referencing global in another module!", &I,
-             &M, GV, GV->getParent());
+      Assert(GV->getParent() == &M,
+	     "Referencing global '" + GV->getName() + "' in another module!",
+	     &I, &M, GV, GV->getParent());
     } else if (isa<Instruction>(I.getOperand(i))) {
       verifyDominatesUse(I, i);
     } else if (isa<InlineAsm>(I.getOperand(i))) {

@@ -1447,6 +1447,10 @@ public:
                             const FunctionDecl *FD = nullptr,
                             CodeGenFunction *CGF = nullptr);
 
+  void GenKitsuneArgMetadata(llvm::Function *FN,
+                             const FunctionDecl *FD = nullptr,
+                             CodeGenFunction *CGF = nullptr);
+
   /// Get target specific null pointer.
   /// \param T is the LLVM type of the null pointer.
   /// \param QT is the clang QualType of the null pointer.

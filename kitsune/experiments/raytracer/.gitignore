@@ -1,0 +1,7 @@
+*.bc
+hold
+*.ptx
+*.fatbin
+*.ppm 
+*.x86_64
+*.csv

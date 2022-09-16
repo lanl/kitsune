@@ -2492,6 +2492,9 @@ private:
   void EmitOpenCLKernelMetadata(const FunctionDecl *FD,
                                 llvm::Function *Fn);
 
+  /// Add Kitsune metadata to the function metadata.
+  void EmitKitsuneMetadata(const FunctionDecl *FD, llvm::Function *Fn);
+
 public:
   CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext=false);
   ~CodeGenFunction();
@@ -3852,7 +3855,7 @@ public:
   llvm::Value *EmitSEHAbnormalTermination();
 
   LoopAttributes::LSStrategy GetTapirStrategyAttr(ArrayRef<const Attr*> Attrs);
-  LoopAttributes::LTarget GetTapirRTTargetAttr(ArrayRef<const Attr*> Attrs);
+  LoopAttributes::LTarget GetTapirTargetAttr(ArrayRef<const Attr*> Attrs);
 
   // Kitsune support for Kokkos.  
   bool InKokkosConstruct = false; // FIXME: Should/can we refactor this away?

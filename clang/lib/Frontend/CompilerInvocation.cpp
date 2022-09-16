@@ -4560,7 +4560,9 @@ bool CompilerInvocation::CreateFromArgsImpl(
     if (Name == "none")
       LangOpts.Tapir = TapirTargetID::None;
     else if (Name == "cilk")
-      LangOpts.Tapir = TapirTargetID::Cilk;
+      // for now, our deprecation path for cilk is to 
+      // use the opencilk ABI. 
+      LangOpts.Tapir = TapirTargetID::OpenCilk;
     else if (Name == "opencilk")
       LangOpts.Tapir = TapirTargetID::OpenCilk;
     else if (Name == "openmp")

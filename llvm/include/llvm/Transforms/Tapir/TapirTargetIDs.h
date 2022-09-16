@@ -34,6 +34,23 @@ enum class TapirTargetID {
   Last_TapirTargetID
 };
 
+enum class TapirNVArchTargetID {
+  Off,      // Completely disabled (i.e., -ftapir != gpu|cuda)
+  SM_50,    // Maxwell -- NOTE: to be depcreated with CUDA 12.x 
+  SM_52,    
+  SM_53, 
+  SM_60,    // Pascal 
+  SM_61,
+  SM_62,
+  SM_70,    // Volta  
+  SM_72, 
+  SM_75,    // Turing 
+  SM_80,    // Ampere
+  // NOTE: LLVM 13.x PTX supports only up through SM_80. 
+  // TODO: Update this enum when we sync w/ upstream LLVM.
+  Last_TapirNVArchTargetID
+};
+
 // Tapir target options
 
 // Virtual base class for Target-specific options.

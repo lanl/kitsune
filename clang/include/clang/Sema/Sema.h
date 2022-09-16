@@ -32,6 +32,7 @@
 #include "clang/AST/NSAPI.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtKitsune.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TypeOrdering.h"

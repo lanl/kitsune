@@ -38,3 +38,19 @@
  }
  
  }  // end namespace Impl
+
+--- core/src/impl/Kokkos_HostSharedPtr.hpp	2022-01-18 11:08:32.912279796 -0700
++++ Kokkos_HostSharedPtr.hpp	2022-01-18 11:09:24.021140035 -0700
+@@ -73,12 +73,8 @@
+                   std::is_copy_constructible_v<Deleter>);
+ #endif
+     if (element_ptr) {
+-      try {
+         m_control = new Control{deleter, 1};
+-      } catch (...) {
+         deleter(element_ptr);
+-        throw;
+-      }
+     }
+   }
+ 

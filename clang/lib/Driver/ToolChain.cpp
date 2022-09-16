@@ -1526,7 +1526,7 @@ void ToolChain::AddTapirRuntimeLibArgs(const ArgList &Args,
           StaticOpenCilk ? ToolChain::FT_Static : ToolChain::FT_Shared)));
 
 
-    // Link the correct Cilk personality fn if running in opencilk mode. 
+    // Link the correct Cilk personality fn if running in opencilk mode.
     if (Args.hasArg(options::OPT_fopencilk)) {
       if (getDriver().CCCIsCXX())
         CmdArgs.push_back("-lopencilk-personality-cpp");
@@ -1544,7 +1544,7 @@ void ToolChain::AddTapirRuntimeLibArgs(const ArgList &Args,
     // Add to the executable's runpath the default directory containing OpenCilk
     // runtime.
     addOpenCilkRuntimeRunPath(*this, Args, CmdArgs, Triple);
-    if (OnlyStaticOpenCilk) 
+    if (OnlyStaticOpenCilk)
       CmdArgs.push_back("-Bdynamic");
     CmdArgs.push_back("-lpthread");
     break;
@@ -1553,18 +1553,18 @@ void ToolChain::AddTapirRuntimeLibArgs(const ArgList &Args,
     CmdArgs.push_back("-lcilkrts");
     break;
   case TapirTargetID::OpenMP:
-    if (! KITSUNE_ENABLE_OPENMP_TARGET)
-      getDriver().Diag(diag::warn_drv_openmp_target_disabled);
+    if (! KITSUNE_ENABLE_OPENMP_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_openmp_target_disabled);
     break;
 
   case TapirTargetID::Qthreads:
-    if (! KITSUNE_ENABLE_QTHREADS_TARGET)
-      getDriver().Diag(diag::warn_drv_qthreads_target_disabled);
+    if (! KITSUNE_ENABLE_QTHREADS_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_qthreads_target_disabled);
     break;
 
   case TapirTargetID::Realm:
-    if (! KITSUNE_ENABLE_REALM_TARGET)
-      getDriver().Diag(diag::warn_drv_realm_target_disabled);
+    if (! KITSUNE_ENABLE_REALM_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_realm_target_disabled);
     else {
       CmdArgs.push_back("-lrealm-abi");
       CmdArgs.push_back("-lrealm");
@@ -1572,24 +1572,38 @@ void ToolChain::AddTapirRuntimeLibArgs(const ArgList &Args,
       CmdArgs.push_back("-ldl");
       CmdArgs.push_back("-lrt");
       #if defined(KITSUNE_REALM_EXTRA_LINK_LIBS)
-      ExtractArgsFromString(KITSUNE_KOKKOS_EXTRA_LINK_LIBS, CmdArgs, Args);
+      ExtractArgsFromString(KITSUNE_REALM_EXTRA_LINK_LIBS, CmdArgs, Args);
       #endif
     }
     break;
 
   case TapirTargetID::Cuda:
-    if (! KITSUNE_ENABLE_CUDA_TARGET)
-      getDriver().Diag(diag::warn_drv_cuda_tapir_target_disabled);
+    if (! KITSUNE_ENABLE_CUDA_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_cuda_target_disabled);
+    else {
+      CmdArgs.push_back("-lkitrt");
+      #if defined(KITSUNE_CUDA_EXTRA_LINK_LIBS)
+      ExtractArgsFromString(KITSUNE_CUDA_EXTRA_LINK_LIBS, CmdArgs, Args);
+      #endif
+    }
     break;
 
   case TapirTargetID::OpenCL:
-    if (! KITSUNE_ENABLE_OPENCL_TARGET)
-      getDriver().Diag(diag::warn_drv_opencl_target_disabled);
+    if (! KITSUNE_ENABLE_OPENCL_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_opencl_target_disabled);
     break;
 
   case TapirTargetID::GPU:
-    CmdArgs.push_back("-lllvm-gpu");
-    break; 
+    if (! KITSUNE_ENABLE_GPU_ABI_TARGET)
+      getDriver().Diag(diag::warn_drv_tapir_gpu_target_disabled);
+    else {
+      CmdArgs.push_back("-lkitrt");
+      CmdArgs.push_back("-ldl");
+      #if defined(KITSUNE_GPU_ABI_EXTRA_LINK_LIBS)
+      ExtractArgsFromString(KITSUNE_GPU_ABI_EXTRA_LINK_LIBS, CmdArgs, Args);
+      #endif
+    }
+    break;
 
   case TapirTargetID::Serial:
   case TapirTargetID::None:
@@ -1608,7 +1622,7 @@ void ToolChain::AddTapirRuntimeLibArgs(const ArgList &Args,
   // of the .cfg files.
   if (D.CCCIsCXX() && Args.hasArg(options::OPT_fkokkos)) {
     if (! KITSUNE_ENABLE_KOKKOS_SUPPORT)
-      getDriver().Diag(diag::warn_drv_kokkos_disabled);
+      getDriver().Diag(diag::warn_drv_kitsune_kokkos_disabled);
     else {
       #if defined(KITSUNE_KOKKOS_EXTRA_LINK_FLAGS)
       ExtractArgsFromString(KITSUNE_KOKKOS_EXTRA_LINK_FLAGS, CmdArgs, Args);

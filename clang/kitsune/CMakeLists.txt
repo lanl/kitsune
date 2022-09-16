@@ -75,9 +75,9 @@ set(KITSUNE_OPENCILK_TARGET_EXTRA_LINK_FLAGS
 configure_file(${CLANG_SOURCE_DIR}/kitsune/opencilk.cfg.in
     ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_OPENCILK_TARGET_CFG_FILENAME})
 
-option(KITSUNE_ENABLE_OPENMP_TARGET
+option(KITSUNE_ENABLE_OPENMP_ABI_TARGET
     "Enable the Kitsune+Tapir OpenMP runtime codegen target." OFF)
-if (KITSUNE_ENABLE_OPENMP_TARGET)
+if (KITSUNE_ENABLE_OPENMP_ABI_TARGET)
   set(TAPIR_OPENMP_TARGET_CFG_FILENAME
       "openmp.cfg"
       CACHE
@@ -95,9 +95,9 @@ if (KITSUNE_ENABLE_OPENMP_TARGET)
       ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_OPENMP_TARGET_CFG_FILENAME})
 endif()
 
-option(KITSUNE_ENABLE_QTHREADS_TARGET
+option(KITSUNE_ENABLE_QTHREADS_ABI_TARGET
     "Enable the Kitsune+Tapir Qthreads runtime codegen target." OFF)
-if (KITSUNE_ENABLE_QTHREADS_TARGET)
+if (KITSUNE_ENABLE_QTHREADS_ABI_TARGET)
   set(TAPIR_QTHREADS_TARGET_CFG_FILENAME
       "qthreads.cfg"
       CACHE
@@ -115,9 +115,9 @@ if (KITSUNE_ENABLE_QTHREADS_TARGET)
       ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_QTHREADS_TARGET_CFG_FILENAME})
 endif()
 
-option(KITSUNE_ENABLE_REALM_TARGET
+option(KITSUNE_ENABLE_REALM_ABI_TARGET
     "Enable the Kitsune+Tapir Realm runtime codegen target." OFF)
-if (KITSUNE_ENABLE_REALM_TARGET)
+if (KITSUNE_ENABLE_REALM_ABI_TARGET)
   set(TAPIR_REALM_TARGET_CFG_FILENAME
       "realm.cfg"
       CACHE
@@ -135,31 +135,31 @@ if (KITSUNE_ENABLE_REALM_TARGET)
       ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_REALM_TARGET_CFG_FILENAME})
 endif()
 
-option(KITSUNE_ENABLE_CUDA_TARGET
+option(KITSUNE_ENABLE_CUDA_ABI_TARGET
     "Enable the Kitsune+Tapir CUDA Toolkit target and codegen library." OFF)
-if (KITSUNE_ENABLE_CUDA_TARGET)
+if (KITSUNE_ENABLE_CUDA_ABI_TARGET)
   find_package(CUDAToolkit 10...11 REQUIRED)  # We may need to be a bit more specifc on minor versions here.
-  set(TAPIR_CUDA_TARGET_CFG_FILENAME
+  set(TAPIR_CUDA_ABI_TARGET_CFG_FILENAME
       "cuda.cfg"
       CACHE
       STRING "Default CUDA Toolkit runtime ABI target Clang .cfg filename.")
-  set(KITSUNE_CUDA_TARGET_EXTRA_LINK_FLAGS
+  set(KITSUNE_CUDA_ABI_TARGET_EXTRA_LINK_FLAGS
       ""
       CACHE
       STRING "Additional link flags needed for the CUDA Toolkit runtime ABI target.")
-  set(KITSUNE_CUDA_TARGET_LINK_LIBS_FLAGS
+  set(KITSUNE_CUDA_ABI_TARGET_LINK_LIBS
       "-L${CUDAToolkit_LIBRARY_DIR} -lcudart"
       CACHE
       STRING "Link library flags (-L, -lxxx) needed for the CUDA Toolkit runtime ABI target.")
   #
-  configure_file(${CLANG_SOURCE_DIR}/kitsune/cudatk.cfg.in
-      ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_CUDA_TARGET_CFG_FILENAME})
+  configure_file(${CLANG_SOURCE_DIR}/kitsune/cuda.cfg.in
+      ${LLVM_BINARY_DIR}/share/kitsune/${TAPIR_CUDA_ABI_TARGET_CFG_FILENAME})
 endif()
 
 # TODO: This needs to be connected to reality... --PM
-option(KITSUNE_ENABLE_HIP_TARGET
+option(KITSUNE_ENABLE_HIP_ABI_TARGET
     "Enable the Kitsune+Tapir HIP target and codegen library." OFF)
-if (KITSUNE_ENABLE_HIP_TARGET)
+if (KITSUNE_ENABLE_HIP_ABI_TARGET)
   set(TAPIR_HIP_TARGET_CFG_FILENAME
       "hip.cfg"
       CACHE
@@ -177,9 +177,9 @@ if (KITSUNE_ENABLE_HIP_TARGET)
 endif()
 
 # TODO: This needs to be connected to reality... --PM
-option(KITSUNE_ENABLE_OPENCL_TARGET
+option(KITSUNE_ENABLE_OPENCL_ABI_TARGET
     "Enable the Kitsune+Tapir OpenCL target and codegen library." OFF)
-if (KITSUNE_ENABLE_OPENCL_TARGET)
+if (KITSUNE_ENABLE_OPENCL_ABI_TARGET)
   set(KITSUNE_OPENCL_TARGET_CFG_FILENAME
       "opencl.cfg"
       CACHE

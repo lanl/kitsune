@@ -12,20 +12,20 @@ namespace kitsune
       
       inline void reset() {
 	using namespace std::chrono;
-	stamp = high_resolution_clock::now();
+	stamp = steady_clock::now();
       };
 
       inline double seconds() const {
 	using namespace std::chrono;
-	high_resolution_clock::time_point now;
-	now = high_resolution_clock::now();
+	steady_clock::time_point now;
+	now = steady_clock::now();
 	return duration_cast<duration<double>>(now - stamp).count();
       }
 
     private:
       timer(const timer&);
       timer& operator=(const timer&);
-      std::chrono::high_resolution_clock::time_point stamp;
+      std::chrono::steady_clock::time_point stamp;
   };
 }
 
