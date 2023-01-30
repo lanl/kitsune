@@ -7,7 +7,7 @@
 // CHECK:           br ^bb1([[VAL_0]] : index)
 // CHECK:         ^bb1([[VAL_6:%.*]]: index):
 // CHECK:           [[VAL_7:%.*]] = cmpi slt, [[VAL_6]], [[VAL_2]] : index
-// CHECK:           cond_br [[VAL_7]], ^bb2, ^bb8
+// CHECK:           cond_br [[VAL_7]], ^bb2, ^bb9
 // CHECK:         ^bb2:
 // CHECK:           br ^bb3([[VAL_1]] : index)
 // CHECK:         ^bb3([[VAL_8:%.*]]: index):
@@ -21,10 +21,14 @@
 // CHECK:         ^bb6:
 // CHECK:           "unknown.op"() : () -> ()
 // CHECK:           llvm_tapir.reattach [[VAL_13]], ^bb5
-// CHECK:         ^bb7:
+// CHECK:         ^bb7: 
+// CHECK:           llvm_tapir.sync [[VAL_13]], ^bb8
+// CHECK:         ^bb8:
 // CHECK:           [[VAL_12:%.*]] = addi [[VAL_6]], [[VAL_4]] : index
 // CHECK:           br ^bb1([[VAL_12]] : index)
-// CHECK:         ^bb8:
+// CHECK:         ^bb9:
+// CHECK:           llvm_tapir.sync [[VAL_13]], ^bb10
+// CHECK:         ^bb10:
 // CHECK:           return
 // CHECK:         }
 
