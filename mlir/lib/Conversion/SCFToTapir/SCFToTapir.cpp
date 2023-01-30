@@ -129,6 +129,7 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
     // We handle the special case of the last element of the loop for inserting
     // Tapir instructions: 
     bool innerMost = *i == *forLoops.rbegin(); 
+    bool outerMost = *i == *forLoops.begin(); 
     ForOp &forOp = *i; 
     Location loc = forOp.getLoc();
     
@@ -204,10 +205,13 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
     // The result of the loop operation is the values of the condition block
     // arguments except the induction variable on the last iteration.
     rewriter.replaceOp(forOp, conditionBlock->getArguments().drop_front());
-
-    auto syncBlock = rewriter.splitBlock(endBlock, endBlock->begin()); 
-    rewriter.setInsertionPointToEnd(endBlock);
-    rewriter.create<LLVM::Tapir_sync>(loc, sr, ArrayRef<Value>(), syncBlock); 
+    
+    // We only need to sync after the outermost loop
+    if(outerMost){
+      auto syncBlock = rewriter.splitBlock(endBlock, endBlock->begin()); 
+      rewriter.setInsertionPointToEnd(endBlock);
+      rewriter.create<LLVM::Tapir_sync>(loc, sr, ArrayRef<Value>(), syncBlock); 
+    }
   }
 
   return success();
