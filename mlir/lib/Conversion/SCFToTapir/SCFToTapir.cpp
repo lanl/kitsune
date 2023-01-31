@@ -55,56 +55,79 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
   auto sr = rewriter.create<LLVM::Tapir_createsyncregion>(loc, LLVM::LLVMTokenType::get(ctx)); 
   // For a parallel loop, we essentially need to create an n-dimensional loop
   // nest. We do this by translating to scf.for ops and have those lowered in
-  // a further rewrite. If a parallel loop contains reductions (and thus returns
-  // values), forward the initial values for the reductions down the loop
-  // hierarchy and bubble up the results by modifying the "yield" terminator.
-  SmallVector<Value, 4> iterArgs = llvm::to_vector<4>(parallelOp.initVals());
+  // a further rewrite. 
+  
+  // For reductions, we create an alloca for each and insert the appropriate
+  // loads and stores
+  SmallVector<Value, 4> reductionAllocas; 
+  //Value index = rewriter.create<ConstantIndexOp>(loc, 0); 
+  for(auto initVal : parallelOp.initVals()){
+    auto ptrTp = MemRefType::get({}, initVal.getType()); 
+    auto ra = rewriter.create<AllocaOp>(loc, ptrTp);
+    //Value index = rewriter.create<ConstantIndexOp>(loc, 0); 
+    rewriter.create<StoreOp>(loc, initVal, ra);  
+    reductionAllocas.push_back(ra); 
+  }
   SmallVector<Value, 4> ivs;
   ivs.reserve(parallelOp.getNumLoops());
-  bool first = true;
-  SmallVector<Value, 4> loopResults(iterArgs);
   for (auto loop_operands :
        llvm::zip(parallelOp.getInductionVars(), parallelOp.lowerBound(),
                  parallelOp.upperBound(), parallelOp.step())) {
     Value iv, lower, upper, step;
     std::tie(iv, lower, upper, step) = loop_operands;
-    ForOp forOp = rewriter.create<ForOp>(loc, lower, upper, step, iterArgs);
+    ForOp forOp = rewriter.create<ForOp>(loc, lower, upper, step);
     ivs.push_back(forOp.getInductionVar());
-    auto iterRange = forOp.getRegionIterArgs();
-    iterArgs.assign(iterRange.begin(), iterRange.end());
-
-    if (first) {
-      // Store the results of the outermost loop that will be used to replace
-      // the results of the parallel loop when it is fully rewritten.
-      loopResults.assign(forOp.result_begin(), forOp.result_end());
-      first = false;
-    } else if (!forOp.getResults().empty()) {
-      // A loop is constructed with an empty "yield" terminator if there are
-      // no results.
-      rewriter.setInsertionPointToEnd(rewriter.getInsertionBlock());
-      rewriter.create<scf::YieldOp>(loc, forOp.getResults());
-    }
 
     forLoops.push_back(forOp); 
     rewriter.setInsertionPointToStart(forOp.getBody());
   }
 
+  auto ib = rewriter.getInsertionBlock(); 
+  auto ip = rewriter.getInsertionPoint(); 
   // First, merge reduction blocks into the main region.
-  SmallVector<Value, 4> yieldOperands;
-  yieldOperands.reserve(parallelOp.getNumResults());
+  int rai=0; 
   for (auto &op : *parallelOp.getBody()) {
     auto reduce = dyn_cast<ReduceOp>(op);
     if (!reduce)
       continue;
 
+    rewriter.setInsertionPointAfter(&op); 
+
     Block &reduceBlock = reduce.reductionOperator().front();
-    Value arg = iterArgs[yieldOperands.size()];
-    yieldOperands.push_back(reduceBlock.getTerminator()->getOperand(0));
-    rewriter.eraseOp(reduceBlock.getTerminator());
-    rewriter.mergeBlockBefore(&reduceBlock, &op, {arg, reduce.operand()});
+    auto arg = rewriter.create<LoadOp>(loc, reductionAllocas[rai]); 
+
+    // Outlined the reduction op to a function
+    rewriter.setInsertionPoint(op.getParentOfType<FuncOp>()); 
+    auto type = reduce.operand().getType(); 
+    FunctionType funtype = FunctionType::get(ctx, { type, type}, type ); 
+    auto outlinedFunc = rewriter.create<FuncOp>(loc, "reduction_" + std::to_string(rai), funtype);
+    outlinedFunc->setAttr("passthrough", ArrayAttr::get(
+      {StringAttr::get("reduction", ctx),
+       StringAttr::get("noinline", ctx)}, 
+      ctx)); 
+    
+    // copy instructions to outlined func
+    rewriter.setInsertionPointToStart(outlinedFunc.addEntryBlock()); 
+    BlockAndValueMapping bvm; 
+    for(auto it : llvm::zip(reduceBlock.getArguments(), outlinedFunc.getArguments()))
+      bvm.map(std::get<0>(it), std::get<1>(it));
+    for(Operation &op : reduceBlock.without_terminator())
+      rewriter.clone(op, bvm); 
+    
+    Operation *term = reduceBlock.getTerminator(); 
+    rewriter.create<ReturnOp>(loc, bvm.lookup(term->getOperand(0))); 
+    
+    // insert call to outlined func and store result in alloca
+    rewriter.setInsertionPointAfter(arg); 
+    ValueRange values( {arg, reduce.operand() }); 
+    auto rv = rewriter.create<CallOp>(loc, outlinedFunc, values); 
+    auto store = rewriter.create<StoreOp>(loc, rv->getResult(0), reductionAllocas[rai++]); 
+
     rewriter.eraseOp(reduce);
+
   }
 
+  rewriter.setInsertionPoint(ib, ip); 
   // Then merge the loop body without the terminator.
   rewriter.eraseOp(parallelOp.getBody()->getTerminator());
   Block *newBody = rewriter.getInsertionBlock();
@@ -113,15 +136,6 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
   else
     rewriter.mergeBlockBefore(parallelOp.getBody(), newBody->getTerminator(),
                               ivs);
-
-  // Finally, create the terminator if required (for loops with no results, it
-  // has been already created in loop construction).
-  if (!yieldOperands.empty()) {
-    rewriter.setInsertionPointToEnd(rewriter.getInsertionBlock());
-    rewriter.create<scf::YieldOp>(loc, yieldOperands);
-  }
-
-  rewriter.replaceOp(parallelOp, loopResults);
 
   // Now we have a set of nested for loops that we know can be executed in
   // parallel.  
@@ -211,6 +225,14 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
       auto syncBlock = rewriter.splitBlock(endBlock, endBlock->begin()); 
       rewriter.setInsertionPointToEnd(endBlock);
       rewriter.create<LLVM::Tapir_sync>(loc, sr, ArrayRef<Value>(), syncBlock); 
+
+      // Insert loads after the sync
+      rewriter.setInsertionPointToStart(syncBlock); 
+      SmallVector<Value,4> loopResults(reductionAllocas); 
+      for(int i = 0; i < reductionAllocas.size(); i++){
+        loopResults[i] = rewriter.create<LoadOp>(loc, reductionAllocas[i]); 
+      }
+      rewriter.replaceOp(parallelOp, loopResults);
     }
   }
 
