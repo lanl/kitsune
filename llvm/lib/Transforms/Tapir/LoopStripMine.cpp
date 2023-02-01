@@ -1589,12 +1589,28 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     auto al = RB.CreateAlloca(ty, outerIters, ptr->getName() + "_reduction");
     IRBuilder<> BH(L->getHeader()->getTerminator()); 
     auto lptr = BH.CreateBitCast(
-      BH.CreateGEP(al, NewIdx), 
+      BH.CreateGEP(ty, al, NewIdx), 
       ptr->getType());                             
     redMap[ptr] = al; 
     // TODO: for now, just initializing with the initial sequential
     // reduction value, which is often unit, but if it isn't this is
-    // wrong.
+    // wrong. What we need to do is assume there is more than one element, and
+    // use the first element for the first iteration of the loop.
+    // roughly: 
+    //   red = init; 
+    //   forall(i = ...){
+    //     red = reduce(red, body(i)); 
+    //   }
+    //   red = init; 
+    //   localred[m]; 
+    //   forall(k = ...){
+    //     localred[i] = body(j_0); 
+    //     for(j = j_1 ...)
+    //       localred = reduce(localred, body(j));
+    //   }
+    //   for(k = ...)
+    //     red = reduce(red, localred[k]); 
+    //
     ptr->replaceUsesWithIf(lptr, [L](Use &u){
       if(auto I = dyn_cast<Instruction>(u.getUser())){
         I->dump(); 
@@ -1603,7 +1619,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         return false;
       }; 
     });
-    BH.CreateStore(BH.CreateLoad(ptr), lptr);  
+    BH.CreateStore(BH.CreateLoad(ty, ptr), lptr);  
   }
   
   // Epilog "join" of reduction values stored in local reduction value arrays.
@@ -1651,11 +1667,12 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         for(auto& kv : redMap){
           auto al = kv.second;
           Value* ptr = const_cast<Value*>(kv.first);  
+          auto ty = ptr->getType(); 
           auto lptr = BB.CreateBitCast(
-            BB.CreateGEP(al, Idx), 
-            ptr->getType());                             
-          auto acc = BB.CreateLoad(ptr); 
-          auto x = BB.CreateLoad(lptr); 
+            BB.CreateGEP(ty, al, Idx), 
+            ty);                             
+          auto acc = BB.CreateLoad(ty, ptr); 
+          auto x = BB.CreateLoad(ty, lptr); 
           auto newacc = acc->getType()->isFloatingPointTy() ? BB.CreateFAdd(acc,x) : BB.CreateAdd(acc,x);
           BB.CreateStore(newacc, ptr); 
         }
