@@ -40,3 +40,16 @@ func @parallel_loop(%arg0 : index, %arg1 : index, %arg2 : index,
   return
 }
 
+func @simple_parallel_reduce_loop(%arg0: index, %arg1: index,
+                              %arg2: index, %arg3: f32) -> f32 {
+
+  %0 = scf.parallel (%i) = (%arg0) to (%arg1) step (%arg2) init(%arg3) -> f32 {
+    %cst = constant 42.0 : f32
+    scf.reduce(%cst) : f32 {
+    ^bb0(%lhs: f32, %rhs: f32):
+      %1 = mulf %lhs, %rhs : f32
+      scf.reduce.return %1 : f32
+    }
+  }
+  return %0 : f32
+ }
