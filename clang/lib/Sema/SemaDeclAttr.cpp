@@ -7120,9 +7120,11 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
   case ParsedAttr::AT_TypeNullable:
     handleNullableTypeAttr(S, D, AL);
     break;
-
   case ParsedAttr::AT_VTablePointerAuthentication:
     handleVTablePointerAuthentication(S, D, AL);
+    break;
+  case ParsedAttr::AT_KitsuneReduction:
+    handleSimpleAttribute<KitsuneReductionAttr>(S, D, AL);
     break;
   }
 }

@@ -239,6 +239,16 @@ def ReadNone : EnumAttr<"readnone", [ParamAttr]>;
 /// Function only reads from memory.
 def ReadOnly : EnumAttr<"readonly", [ParamAttr]>;
 
+<<<<<<< HEAD
+=======
+/// Tapir reducer-related attributes.
+def HyperView : EnumAttr<"hyper_view", [FnAttr]>;
+def HyperToken : EnumAttr<"hyper_token", [FnAttr]>;
+def ReducerRegister : EnumAttr<"reducer_register", [FnAttr]>;
+def ReducerUnregister : EnumAttr<"reducer_unregister", [FnAttr]>;
+def KitsuneReduction : EnumAttr<"kitsune_reduction", [FnAttr]>;
+
+>>>>>>> e2078e0739d8 (Working reductions, sequential semantics preserved for commutative associative magmas)
 /// Return value is always equal to this argument.
 def Returned : EnumAttr<"returned", [ParamAttr]>;
 

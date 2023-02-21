@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Utils/SimplifyIndVar.h"
 #include "llvm/Transforms/Utils/TapirUtils.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
+#include "llvm/Transforms/Utils/LoopPeel.h"
 
 using namespace llvm;
 
@@ -804,6 +805,10 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   unsigned ExitIndex = LatchBR->getSuccessor(0) == Header ? 1 : 0;
   BasicBlock *LatchExit = LatchBR->getSuccessor(ExitIndex);
 
+  
+  Function *F = Header->getParent();
+  LLVM_DEBUG(dbgs() << "Function before strip mining\n" << *F); 
+
   // We will use the increment of the primary induction variable to derive
   // wrapping flags.
   Instruction *PrimaryInc =
@@ -1551,26 +1556,25 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // Optimize this routine in the future.
     TI->recalculate(*F, *DT);
 
-  // iterate through the stores that should be treated as reductions
+  // accumulate reductions
   const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
-  std::set<Value*> reductions;  
+  std::set<CallInst*> reductions;
   for (BasicBlock *BB : blocks){
     for (Instruction &I : *BB) {
-      if(auto si = dyn_cast<StoreInst>(&I)){
-        // TODO: better check if the store should be treated as a
-        // reduction. What we're doing is just checking if it's
-        // storing to a loop invariant pointer
-        Value* ptr = si->getPointerOperand(); 
-        if(L->isLoopInvariant(ptr)){
-          LLVM_DEBUG(dbgs() << "Found reduction var: " << ptr->getName() << "\n"); 
-          reductions.insert(ptr); 
+      if(auto ci = dyn_cast<CallInst>(&I)){
+        auto f = ci->getCalledFunction(); 
+        if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+          LLVM_DEBUG(dbgs() << "Found reduction var: " << ci->getArgOperand(0)->getName() << 
+                               "with reduction function: " << f->getName() << "\n"); 
+          reductions.insert(ci); 
+          //TODO: check the type to confirm valid reduction
         }
       }
     }
   }
   LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
 
-  ValueToValueMap redMap; 
+  std::vector<std::tuple<CallInst*, Value* , Value*>> redMap; 
   // TODO: Modify the strip mining outer loop to be smaller: currently we are
   // stack allocating n/2048 reduction values.
   // TODO: Initialize local reductions with unit values
@@ -1584,17 +1588,16 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   Value *outerIters = RB.CreateUDiv(TripCount,
                                ConstantInt::get(TripCount->getType(), Count),
                                "stripiter");
-  for(Value* ptr : reductions){
+  for(CallInst* ci : reductions){
+    auto ptr = ci->getArgOperand(0); 
     auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
     auto al = RB.CreateAlloca(ty, outerIters, ptr->getName() + "_reduction");
-    IRBuilder<> BH(L->getHeader()->getTerminator()); 
+    IRBuilder<> BH(NewLoop->getHeader()->getTerminator()); 
     auto lptr = BH.CreateBitCast(
       BH.CreateGEP(ty, al, NewIdx), 
       ptr->getType());                             
-    redMap[ptr] = al; 
-    // TODO: for now, just initializing with the initial sequential
-    // reduction value, which is often unit, but if it isn't this is
-    // wrong. What we need to do is assume there is more than one element, and
+    redMap.push_back(std::make_tuple(ci, ptr, al)); 
+    // Assume there is more than one element, and
     // use the first element for the first iteration of the loop.
     // roughly: 
     //   red = init; 
@@ -1606,20 +1609,18 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     //   forall(k = ...){
     //     localred[i] = body(j_0); 
     //     for(j = j_1 ...)
-    //       localred = reduce(localred, body(j));
+    //       reduce(localred+i, body(j));
     //   }
     //   for(k = ...)
-    //     red = reduce(red, localred[k]); 
+    //     reduce(&red, localred[k]); 
     //
     ptr->replaceUsesWithIf(lptr, [L](Use &u){
       if(auto I = dyn_cast<Instruction>(u.getUser())){
-        I->dump(); 
         return L->contains(I->getParent()); 
       } else {
         return false;
       }; 
     });
-    BH.CreateStore(BH.CreateLoad(ty, ptr), lptr);  
   }
   
   // Epilog "join" of reduction values stored in local reduction value arrays.
@@ -1636,53 +1637,64 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   //   RedEpiBody
   // RedEpiExit
 
+  // Todo: re-order epilogue and reduction epilogue to preserve associativity
   if(!reductions.empty()){
-    SmallVector<SyncInst*,2> syncs; 
-    for(auto &bb : *F){
-      if(auto *sync = dyn_cast<SyncInst>(bb.getTerminator())){
-        syncs.push_back(sync);
-      }
-    }
-    for(auto *sync : syncs){
-      if(sync->getSyncRegion() == SyncReg){
-        BasicBlock *Sync = sync->getParent(); 
-        BasicBlock *PostSync = sync->getSuccessor(0);
-        BasicBlock* RedEpiHeader = BasicBlock::Create(Sync->getContext(), "reductionEpilogue", Sync->getParent(), Sync); 
-        RedEpiHeader->moveAfter(Sync); 
-        sync->setSuccessor(0, RedEpiHeader); 
-        BranchInst::Create(PostSync, RedEpiHeader); 
-        PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
-                                       "reductionepilogueidx",
-                                       RedEpiHeader->getFirstNonPHI());
-        IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
-        Idx->addIncoming(outerIters, sync->getParent());
-        Instruction *bodyTerm, *exitTerm;
-        Value *cmp = BH.CreateIsNotNull(Idx); 
-        SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
-
-        IRBuilder<> BB(bodyTerm); 
-        // For each reduction, get the allocated thread local reduced values and
-        // reduce them. For now defaults to sums on primitive types.
-        // TODO: Add custom unital magmas and/or infer unital magma
-        for(auto& kv : redMap){
-          auto al = kv.second;
-          Value* ptr = const_cast<Value*>(kv.first);  
-          auto ty = ptr->getType(); 
-          auto lptr = BB.CreateBitCast(
-            BB.CreateGEP(ty, al, Idx), 
-            ty);                             
-          auto acc = BB.CreateLoad(ty, ptr); 
-          auto x = BB.CreateLoad(ty, lptr); 
-          auto newacc = acc->getType()->isFloatingPointTy() ? BB.CreateFAdd(acc,x) : BB.CreateAdd(acc,x);
-          BB.CreateStore(newacc, ptr); 
+    // Peel the first iteration of the loop and replace the reduction calls in
+    // the peeled code with stores
+    peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA); 
+    SmallVector<Instruction*, 4> cis;
+    for(auto &BB : NewLoop->blocks()){
+      if(!L->contains(BB)){ // better way?
+        for(auto &I : *BB){
+          if(auto *CI = dyn_cast<CallInst>(&I)){
+            auto *f = CI->getCalledFunction(); 
+            if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+              IRBuilder<> pb(&I); 
+              pb.CreateStore(CI->getArgOperand(1), CI->getArgOperand(0)); 
+              cis.push_back(&I); 
+              f->removeFnAttr(Attribute::NoInline); 
+            }
+          }
         }
-        Value *IdxSub =
-            BB.CreateSub(Idx, ConstantInt::get(Idx->getType(), 1),
-                              Idx->getName() + ".sub");
-        Idx->addIncoming(IdxSub, bodyTerm->getParent()); 
-        ReplaceInstWithInst(bodyTerm, BranchInst::Create(RedEpiHeader)); 
       }
     }
+    
+    for(auto &I : cis){
+      I->eraseFromParent();  
+    }
+
+    Instruction* term = LatchExit->getTerminator(); 
+    BasicBlock *PostSync = term->getSuccessor(0);
+    BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
+    RedEpiHeader->moveAfter(LatchExit); 
+    ReplaceInstWithInst(term, SyncInst::Create(RedEpiHeader, SyncReg)); 
+    BranchInst::Create(PostSync, RedEpiHeader);
+    PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
+                                   "reductionepilogueidx",
+                                   RedEpiHeader->getFirstNonPHI());
+    IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
+    Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), LatchExit);
+    Instruction *bodyTerm, *exitTerm;
+    Value *cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, outerIters); 
+    SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
+
+    IRBuilder<> BB(bodyTerm); 
+    // For each reduction, get the allocated thread local reduced values and
+    // reduce them. 
+    for(auto& kv : redMap){
+      const auto [ ci, ptr, al ] = kv; 
+      auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
+      auto lptr = BB.CreateBitCast(
+        BB.CreateGEP(ty, al, Idx), 
+        ptr->getType());                             
+      auto x = BB.CreateLoad(ty, lptr); 
+      BB.CreateCall(ci->getCalledFunction(), { ptr, x }); 
+    }
+    Value *IdxAdd =
+        BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
+                          Idx->getName() + ".add");
+    Idx->addIncoming(IdxAdd, bodyTerm->getParent()); 
+    ReplaceInstWithInst(bodyTerm, BranchInst::Create(RedEpiHeader)); 
   }
 
   LLVM_DEBUG(dbgs() << "Function after reduction epilogue\n" << *F);  

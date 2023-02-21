@@ -151,8 +151,20 @@ void OpenCilkABI::prepareModule() {
     if ("" != ClOpenCilkRuntimeBCPath)
       RuntimeBCPath = ClOpenCilkRuntimeBCPath;
 
-    if ("" == RuntimeBCPath)
-      C.emitError("OpenCilkABI: No OpenCilk bitcode ABI file given.");
+    std::optional<std::string> path;
+    if("" == RuntimeBCPath){
+      path = sys::Process::FindInEnvPath("LD_LIBRARY_PATH", "libopencilk-abi.bc");
+      if (! path)
+        // TODO: This is an in-tree build solution for now...
+        #if defined(OPENCILK_BC_PATH)
+        path = OPENCILK_BC_PATH;
+        #else
+        report_fatal_error("Could not find OpenCilk runtime bitcode file "
+                           "(libopencilk-abi.bc) in LD_LIBRARY_PATH.");
+        #endif
+    } else {
+      path = ClOpenCilkRuntimeBCPath.getValue();
+    }
 
     LLVM_DEBUG(dbgs() << "Using external bitcode file for OpenCilk ABI: "
                       << RuntimeBCPath << "\n");
@@ -161,7 +173,7 @@ void OpenCilkABI::prepareModule() {
     // Parse the bitcode file.  This call imports structure definitions, but not
     // function definitions.
     if (std::unique_ptr<Module> ExternalModule =
-        parseIRFile(RuntimeBCPath, SMD, C)) {
+        parseIRFile(path.getValue(), SMD, C)) {
       // Get the original DiagnosticHandler for this context.
       std::unique_ptr<DiagnosticHandler> OrigDiagHandler =
           C.getDiagnosticHandler();

@@ -4725,6 +4725,14 @@ def ClspvLibclcBuiltin: InheritableAttr {
   let SimpleHandler = 1;
 }
 
+// +===== kitsune-/tapir-centric attributes
+
+def KitsuneReduction : InheritableAttr {
+  let Spellings = [Clang<"kitsune_reduction">];
+  let Subjects = SubjectList<[FunctionLike]>;
+  let Documentation = [StrandMallocDocs];
+}
+
 def TapirTarget : StmtAttr {
   let Spellings = [CXX11<"tapir","target">];
 
