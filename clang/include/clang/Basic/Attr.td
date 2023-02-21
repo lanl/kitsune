@@ -5227,6 +5227,13 @@ def NonString : InheritableAttr {
   let Spellings = [GCC<"nonstring">];
   let Subjects = SubjectList<[Var, Field]>;
   let Documentation = [NonStringDocs];
+
+// +===== kitsune-/tapir-centric attributes
+
+def KitsuneReduction : InheritableAttr {
+  let Spellings = [Clang<"kitsune_reduction">];
+  let Subjects = SubjectList<[FunctionLike]>;
+  let Documentation = [StrandMallocDocs];
 }
 
 def TapirTarget : StmtAttr {
