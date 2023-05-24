@@ -1666,43 +1666,40 @@ HipABIOutputFile HipABI::createTargetObj(const StringRef &ObjFileName) {
   }
   ObjFile->keep();
 
-  LLVM_DEBUG(dbgs() << "\trunning module optimization passes.\n");
-  // FIXME:? hould the vectorization only be done at O3, or should it be
-  // allowed at O2 as well?
-  PipelineTuningOptions pto;
-  pto.LoopVectorization = OptLevel > 2;
-  pto.SLPVectorization = OptLevel > 2;
-  pto.LoopUnrolling = true;
-  pto.LoopInterleaving = true;
-  pto.LoopStripmine = true;
-  LoopAnalysisManager lam;
-  FunctionAnalysisManager fam;
-  CGSCCAnalysisManager cgam;
-  ModuleAnalysisManager mam;
+  if (OptLevel > 0) {
+    if (OptLevel > 3)
+      OptLevel = 3;
+    LLVM_DEBUG(dbgs() << "\trunning module optimization passes.\n");
+    PipelineTuningOptions pto;
+    pto.LoopVectorization = OptLevel > 2;
+    pto.SLPVectorization = OptLevel > 2;
+    pto.LoopUnrolling = true;
+    pto.LoopInterleaving = true;
+    pto.LoopStripmine = true;
+    LoopAnalysisManager lam;
+    FunctionAnalysisManager fam;
+    CGSCCAnalysisManager cgam;
+    ModuleAnalysisManager mam;
 
-  PassBuilder pb(AMDTargetMachine, pto);
-  pb.registerModuleAnalyses(mam);
-  pb.registerCGSCCAnalyses(cgam);
-  pb.registerFunctionAnalyses(fam);
-  pb.registerLoopAnalyses(lam);
-  AMDTargetMachine->registerPassBuilderCallbacks(pb);
-  pb.crossRegisterProxies(lam, fam, cgam, mam);
-  OptimizationLevel optLevels[] = {
-      OptimizationLevel::O0,
-      OptimizationLevel::O1,
-      OptimizationLevel::O2,
-      OptimizationLevel::O3,
-  };
-  OptimizationLevel optLevel = OptimizationLevel::O2;
-  if (OptLevel <= 3) // unsigned...
-    optLevel = optLevels[OptLevel];
-  ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(optLevel);
-  mpm.addPass(VerifierPass());
-  LLVM_DEBUG(dbgs() << "\t\t* module: " << KernelModule.getName() << "\n");
-
-  // llvm::errs() << KernelModule << "\n";
-
-  // mpm.run(KernelModule, mam);
+    PassBuilder pb(AMDTargetMachine, pto);
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerFunctionAnalyses(fam);
+    pb.registerLoopAnalyses(lam);
+    AMDTargetMachine->registerPassBuilderCallbacks(pb);
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+    OptimizationLevel optLevels[] = {
+        OptimizationLevel::O0,
+        OptimizationLevel::O1,
+        OptimizationLevel::O2,
+        OptimizationLevel::O3,
+    };
+    OptimizationLevel optLevel = optLevels[OptLevel];
+    ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(optLevel);
+    mpm.addPass(VerifierPass());
+    LLVM_DEBUG(dbgs() << "\t\t* module: " << KernelModule.getName() << "\n");
+    mpm.run(KernelModule, mam);
+  }
 
   legacy::PassManager PassMgr;
   if (AMDTargetMachine->addPassesToEmitFile(PassMgr, ObjFile->os(), nullptr,

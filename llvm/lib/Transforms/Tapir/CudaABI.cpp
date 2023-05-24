@@ -2015,36 +2015,38 @@ CudaABIOutputFile CudaABI::generatePTX() {
 
   KM.addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz", true);
 
-  PipelineTuningOptions pto;
-  pto.LoopVectorization = OptLevel > 2;
-  pto.SLPVectorization = OptLevel > 2;
-  pto.LoopUnrolling = true;
-  pto.LoopInterleaving = true;
-  pto.LoopStripmine = true;
-  LoopAnalysisManager lam;
-  FunctionAnalysisManager fam;
-  CGSCCAnalysisManager cgam;
-  ModuleAnalysisManager mam;
-  PassBuilder pb(PTXTargetMachine, pto);
-  pb.registerModuleAnalyses(mam);
-  pb.registerCGSCCAnalyses(cgam);
-  pb.registerFunctionAnalyses(fam);
-  pb.registerLoopAnalyses(lam);
-  PTXTargetMachine->registerPassBuilderCallbacks(pb);
-  pb.crossRegisterProxies(lam, fam, cgam, mam);
-  OptimizationLevel optLevels[] = {
-      OptimizationLevel::O0,
-      OptimizationLevel::O1,
-      OptimizationLevel::O2,
-      OptimizationLevel::O3,
-  };
-  OptimizationLevel OptimizationLevel = OptimizationLevel::O2;
-  if (OptLevel <= 3) // unsigned always >= 0...
-    OptimizationLevel = optLevels[OptLevel];
-  ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(OptimizationLevel);
-  mpm.addPass(VerifierPass());
-  LLVM_DEBUG(dbgs() << "\t\t* module: " << KM.getName() << "\n");
-  mpm.run(KM, mam);
+  if (OptLevel > 0) {
+    if (OptLevel > 3) 
+      OptLevel = 3;
+    PipelineTuningOptions pto;
+    pto.LoopVectorization = OptLevel > 2;
+    pto.SLPVectorization = OptLevel > 2;
+    pto.LoopUnrolling = true;
+    pto.LoopInterleaving = true;
+    pto.LoopStripmine = true;
+    LoopAnalysisManager lam;
+    FunctionAnalysisManager fam;
+    CGSCCAnalysisManager cgam;
+    ModuleAnalysisManager mam;
+    PassBuilder pb(PTXTargetMachine, pto);
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerFunctionAnalyses(fam);
+    pb.registerLoopAnalyses(lam);
+    PTXTargetMachine->registerPassBuilderCallbacks(pb);
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+    OptimizationLevel optLevels[] = {
+        OptimizationLevel::O0,
+        OptimizationLevel::O1,
+        OptimizationLevel::O2,
+        OptimizationLevel::O3,
+    };
+    OptimizationLevel OptimizationLevel = optLevels[OptLevel];
+    ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(OptimizationLevel);
+    mpm.addPass(VerifierPass());
+    LLVM_DEBUG(dbgs() << "\t\t* module: " << KM.getName() << "\n");
+    mpm.run(KM, mam);
+  }
 
   // Setup the passes and request that the output goes to the
   // specified PTX file.
