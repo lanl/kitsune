@@ -1556,7 +1556,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // Optimize this routine in the future.
     TI->recalculate(*F, *DT);
 
-  // accumulate reductions
+  // accumulate reductions in main loop
   const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
   std::set<CallInst*> reductions;
   for (BasicBlock *BB : blocks){
@@ -1572,6 +1572,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
       }
     }
   }
+   
+  // accumulate reductions in epilog loop
   LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
 
   std::vector<std::tuple<CallInst*, Value* , Value*>> redMap; 
@@ -1588,10 +1590,16 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   Value *outerIters = RB.CreateUDiv(TripCount,
                                ConstantInt::get(TripCount->getType(), Count),
                                "stripiter");
+  auto nred = RB.CreateAdd(outerIters, ConstantInt::get(outerIters->getType(), 1)); 
   for(CallInst* ci : reductions){
+    // TODO: generic allocation/free calls
     auto ptr = ci->getArgOperand(0); 
     auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
-    auto al = RB.CreateAlloca(ty, outerIters, ptr->getName() + "_reduction");
+    auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
+    auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(nred->getType()))); 
+    auto al = RB.CreateCall(M->getOrInsertFunction("gpuManagedMalloc", gmmTy), {arrSize}); 
+    //auto al = RB.CreateBitCast(rm, ty); 
+    //auto al = RB.CreateAlloca(ty, nred, ptr->getName() + "_reduction");
     IRBuilder<> BH(NewLoop->getHeader()->getTerminator()); 
     auto lptr = BH.CreateBitCast(
       BH.CreateGEP(ty, al, NewIdx), 
@@ -1605,13 +1613,17 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     //     red = reduce(red, body(i)); 
     //   }
     //   red = init; 
-    //   localred[m]; 
-    //   forall(k = ...){
+    //   localred[m+1]; 
+    //   
+    //   forall(k ∈ 0..m-1){
     //     localred[i] = body(j_0); 
-    //     for(j = j_1 ...)
+    //     for(j ∈ j_k_1..j_k_l-1)
     //       reduce(localred+i, body(j));
     //   }
-    //   for(k = ...)
+    //   for( j ∈ j_k_m .. n )
+    //     reduce(localred+m, body(j)); 
+    //   }
+    //   for(k ∈ 0..m) 
     //     reduce(&red, localred[k]); 
     //
     ptr->replaceUsesWithIf(lptr, [L](Use &u){
@@ -1688,25 +1700,34 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         BB.CreateGEP(ty, al, Idx), 
         ptr->getType());                             
       auto x = BB.CreateLoad(ty, lptr); 
+      BB.SetCurrentDebugLocation(ci->getDebugLoc()); 
       BB.CreateCall(ci->getCalledFunction(), { ptr, x }); 
     }
     Value *IdxAdd =
         BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
                           Idx->getName() + ".add");
-    Idx->addIncoming(IdxAdd, bodyTerm->getParent()); 
+    BasicBlock* body = bodyTerm->getParent(); 
+    BasicBlock* loopExit = exitTerm->getParent(); 
+    Idx->addIncoming(IdxAdd, body); 
     ReplaceInstWithInst(bodyTerm, BranchInst::Create(RedEpiHeader)); 
+
+    // Update Loopinfo with reduction loop
+    Loop* RL = LI->AllocateLoop(); 
+    if(ParentLoop) ParentLoop->addChildLoop(RL); 
+    else LI->addTopLevelLoop(RL); 
+    RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
+    RL->addBasicBlockToLoop(body, *LI); 
   }
 
   LLVM_DEBUG(dbgs() << "Function after reduction epilogue\n" << *F);  
 
   // TODO: fix DT updates
   DT->recalculate(*F); 
-  /*
+
 #ifndef NDEBUG
   DT->verify();
   LI->verify(*DT);
 #endif
-  */
 
   return NewLoop;
 }

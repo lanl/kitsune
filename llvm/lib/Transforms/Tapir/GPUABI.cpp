@@ -37,6 +37,13 @@ using namespace llvm;
 
 #define DEBUG_TYPE "gpuabi"
 
+// JIT compiler kernel at containing function entry, makes timing easier at the
+// cost of less laziness
+static cl::opt<bool>
+    JIT("jit-callsite", cl::init(false), cl::NotHidden,
+          cl::desc("Wait until parallel loop is called to jit kernel. " 
+          "(default=false)"));
+
 Value *GPUABI::lowerGrainsizeCall(CallInst *GrainsizeCall) {
   Value *Grainsize = ConstantInt::get(GrainsizeCall->getType(), 8);
 
@@ -231,11 +238,7 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
       // Grainsize argument is the third LC arg.
       Grainsize = &*++(++OutlineArgsIter);
   }
-  ThreadID = B.CreateMul(ThreadID, Grainsize);
-  Value *ThreadEndGrain = B.CreateAdd(ThreadID, Grainsize);
-  Value *Cmp = B.CreateICmp(ICmpInst::ICMP_ULT, ThreadEndGrain, End);
-  Value *ThreadEnd = B.CreateSelect(Cmp, ThreadEndGrain, End);
-  Value *Cond = B.CreateICmpUGE(ThreadID, ThreadEnd);
+  Value *Cond = B.CreateICmpUGE(ThreadID, End);
 
   ReplaceInstWithInst(Entry->getTerminator(), BranchInst::Create(Exit, Header,
                                                                  Cond));
@@ -245,10 +248,10 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   // Update cloned loop condition to use the thread-end value.
   unsigned TripCountIdx = 0;
   ICmpInst *ClonedCond = cast<ICmpInst>(VMap[TL.getCondition()]);
-  if (ClonedCond->getOperand(0) != ThreadEnd)
+  if (ClonedCond->getOperand(0) != End)
     ++TripCountIdx;
-  ClonedCond->setOperand(TripCountIdx, ThreadEnd);
-  assert(ClonedCond->getOperand(TripCountIdx) == ThreadEnd &&
+  ClonedCond->setOperand(TripCountIdx, End);
+  assert(ClonedCond->getOperand(TripCountIdx) == End &&
          "End argument not used in condition");
 
 }
@@ -261,8 +264,6 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   Type *Int64Ty = Type::getInt64Ty(Ctx);
   Type *VoidPtrTy = Type::getInt8PtrTy(Ctx);
 
-  //Task *T = TL.getTask();
-  //Instruction *ReplCall = cast<CallBase>(TOI.ReplCall);
   LLVM_DEBUG(dbgs() << "Running processOutlinedLoopCall: " << LLVMM);
   Function *Parent = TOI.ReplCall->getFunction();
   Value *TripCount = OrderedInputs[0];
@@ -388,12 +389,6 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                  GlobalValue::PrivateLinkage, LLVMBC,
                                  "gpu_" + Twine("kitsune_kernel"));
 
-  //Value* TripCount = isSRetInput(TOI.InputSet[0]) ? TOI.InputSet[1] : TOI.InputSet[0];
-  //Value *RunStart = ReplCall->getArgOperand(getIVArgIndex(*Parent,
-  //                                                        TOI.InputSet));
-  //Value *TripCount = ReplCall->getArgOperand(getLimitArgIndex(*Parent,
-  //                                                            TOI.InputSet));
-
   Value *KernelID = ConstantInt::get(Int32Ty, MyKernelID);
   Value *LLVMPtr = B.CreateBitCast(LLVMGlobal, VoidPtrTy);
   Type *VoidPtrPtrTy = VoidPtrTy->getPointerTo();
@@ -417,20 +412,9 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
     B.CreateStore(VoidVPtr, argPtr);
   }
 
-  Value *Grainsize = TL.getGrainsize() ?
-    ConstantInt::get(TripCount->getType(), TL.getGrainsize()) :
-    OrderedInputs[2];
-
-  //Type *Int64Ty = Type::getInt64Ty(LLVMM.getContext());
-  Value *RunSizeQ = B.CreateUDiv(TripCount, Grainsize);
-  Value *RunRem = B.CreateURem(TripCount, Grainsize);
-  Value *IsRem = B.CreateICmp(ICmpInst::ICMP_UGT, RunRem, ConstantInt::get(RunRem->getType(), 0));
-  Value *IsRemAdd = B.CreateZExt(IsRem, RunSizeQ->getType());
-  Value *RunSize = B.CreateZExt(B.CreateAdd(RunSizeQ, IsRemAdd), Int64Ty);
-
-  Value* argsPtr = B.CreateConstInBoundsGEP2_32(arrayType, argArray, 0, 0);
-  Value* bcPtr = B.CreateConstInBoundsGEP2_32(LLVMGlobal->getValueType(), LLVMGlobal, 0, 0);
-  Value* stream = B.CreateCall(GPULaunchKernel, { bcPtr, kernelSize, argsPtr, RunSize });
+  Value* argsPtr = B.CreateConstInBoundsGEP2_32(arrayType, argArray, 0, 0); 
+  Value* bcPtr = B.CreateConstInBoundsGEP2_32(LLVMGlobal->getValueType(), LLVMGlobal, 0, 0); 
+  Value* stream = B.CreateCall(GPULaunchKernel, { bcPtr, kernelSize, argsPtr, TripCount });
   B.CreateCall(GPUWaitKernel, stream);
 
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
