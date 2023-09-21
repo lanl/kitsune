@@ -1594,7 +1594,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   for(CallInst* ci : reductions){
     // TODO: generic allocation/free calls
     auto ptr = ci->getArgOperand(0); 
-    auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
+    auto ty = dyn_cast<PointerType>(ptr->getType())->getArrayElementType(); 
     auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
     auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(nred->getType()))); 
     auto al = RB.CreateCall(M->getOrInsertFunction("gpuManagedMalloc", gmmTy), {arrSize}); 
@@ -1653,7 +1653,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   if(!reductions.empty()){
     // Peel the first iteration of the loop and replace the reduction calls in
     // the peeled code with stores
-    peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA); 
+    ValueToValueMapTy VMap; 
+    peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA, VMap); 
     SmallVector<Instruction*, 4> cis;
     for(auto &BB : NewLoop->blocks()){
       if(!L->contains(BB)){ // better way?
@@ -1695,7 +1696,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // reduce them. 
     for(auto& kv : redMap){
       const auto [ ci, ptr, al ] = kv; 
-      auto ty = dyn_cast<PointerType>(ptr->getType())->getElementType(); 
+      auto ty = dyn_cast<PointerType>(ptr->getType())->getArrayElementType(); 
       auto lptr = BB.CreateBitCast(
         BB.CreateGEP(ty, al, Idx), 
         ptr->getType());                             
