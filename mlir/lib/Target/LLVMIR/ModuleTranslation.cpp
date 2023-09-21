@@ -15,6 +15,7 @@
 
 #include "DebugTranslation.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -837,6 +838,34 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     branchMapping.try_emplace(&opInst, branch);
     return success();
   }
+  
+  if (auto detachOp = dyn_cast<LLVM::Tapir_detach>(opInst)) {
+    llvm::DetachInst *detach = builder.CreateDetach(
+        blockMapping[detachOp.getSuccessor(0)],
+        blockMapping[detachOp.getSuccessor(1)],
+        valueMapping.lookup(detachOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
+  if (auto reattachOp = dyn_cast<LLVM::Tapir_reattach>(opInst)) {
+    llvm::ReattachInst *detach = builder.CreateReattach(
+        blockMapping[reattachOp.getSuccessor()],
+        valueMapping.lookup(reattachOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
+  if (auto syncOp = dyn_cast<LLVM::Tapir_sync>(opInst)) {
+    llvm::SyncInst *detach = builder.CreateSync(
+        blockMapping[syncOp.getSuccessor()],
+        valueMapping.lookup(syncOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
+
+
   if (auto switchOp = dyn_cast<LLVM::SwitchOp>(opInst)) {
     llvm::MDNode *branchWeights = nullptr;
     if (auto weights = switchOp.branch_weights()) {

@@ -13,6 +13,7 @@
 #include "mlir/Target/LLVMIR.h"
 
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
 
@@ -50,7 +51,7 @@ void registerToLLVMIRTranslation() {
         return success();
       },
       [](DialectRegistry &registry) {
-        registry.insert<LLVM::LLVMDialect, omp::OpenMPDialect>();
+        registry.insert<LLVM::LLVMDialect, LLVM::LLVMTapirDialect, omp::OpenMPDialect>();
       });
 }
 } // namespace mlir
