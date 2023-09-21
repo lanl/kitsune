@@ -17,6 +17,7 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h"
+#include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -568,7 +569,35 @@ ModuleTranslation::convertOperation(Operation &op,
     return op.emitError("LLVM Translation failed for operation: ")
            << op.getName();
 
+
+  
+  if (auto detachOp = dyn_cast<LLVM::Tapir_detach>(op)) {
+    llvm::DetachInst *detach = builder.CreateDetach(
+        blockMapping[detachOp.getSuccessor(0)],
+        blockMapping[detachOp.getSuccessor(1)],
+        valueMapping.lookup(detachOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
+  if (auto reattachOp = dyn_cast<LLVM::Tapir_reattach>(op)) {
+    llvm::ReattachInst *detach = builder.CreateReattach(
+        blockMapping[reattachOp.getSuccessor()],
+        valueMapping.lookup(reattachOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
+  if (auto syncOp = dyn_cast<LLVM::Tapir_sync>(op)) {
+    llvm::SyncInst *detach = builder.CreateSync(
+        blockMapping[syncOp.getSuccessor()],
+        valueMapping.lookup(syncOp.getOperand(0))); 
+    branchMapping.try_emplace(&opInst, detach); 
+    return success(); 
+  }
+
   return convertDialectAttributes(&op);
+
 }
 
 /// Convert block to LLVM IR.  Unless `ignoreArguments` is set, emit PHI nodes

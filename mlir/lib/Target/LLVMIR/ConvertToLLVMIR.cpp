@@ -16,6 +16,7 @@
 #include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 
@@ -36,6 +37,7 @@ void registerToLLVMIRTranslation() {
       },
       [](DialectRegistry &registry) {
         registry.insert<DLTIDialect, func::FuncDialect>();
+        registry.insert<LLVM::LLVMDialect, LLVM::LLVMTapirDialect, omp::OpenMPDialect>();
         registerAllToLLVMIRTranslations(registry);
       });
 }
