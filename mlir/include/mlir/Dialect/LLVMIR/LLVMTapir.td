@@ -39,9 +39,11 @@ class LLVMTapir_Op<string mnemonic, list<OpTrait> traits = []> :
 class LLVMTapir_IntrOp<string mnem, list<int> overloadedResults,
                   list<int> overloadedOperands, list<OpTrait> traits,
                   int numResults>
-    : LLVM_IntrOpBase<LLVMTapir_Dialect, "intr." # mnem, !subst(".", "_", mnem),
+    : LLVM_IntrOpBase<LLVMTapir_Dialect, "tapir_" # mnem, !subst(".", "_", mnem),
                       overloadedResults, overloadedOperands, traits,
-                      numResults>;
+                      numResults>{
+  let assemblyFormat = "attr-dict `:` type($res)";
+} 
 
 //----------------------------------------------------------------------------//
 // MLIR LLVM Arm SVE intrinsics using the MLIR LLVM Dialect type system

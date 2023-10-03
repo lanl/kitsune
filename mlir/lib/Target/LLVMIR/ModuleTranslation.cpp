@@ -864,6 +864,13 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return success(); 
   }
 
+  if (auto syncOp = dyn_cast<LLVM::Tapir_createsyncregion>(opInst)) {
+    auto *sr = builder.CreateCall(llvm::Intrinsic::getDeclaration(llvmModule.get(),
+      llvm::Intrinsic::syncregion_start), {}); 
+    valueMapping[opInst.getResult(0)] = sr;
+    return success(); 
+  }
+
 
 
   if (auto switchOp = dyn_cast<LLVM::SwitchOp>(opInst)) {
