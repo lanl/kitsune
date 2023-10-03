@@ -596,7 +596,15 @@ ModuleTranslation::convertOperation(Operation &op,
     return success(); 
   }
 
+  if (auto syncOp = dyn_cast<LLVM::Tapir_createsyncregion>(opInst)) {
+    auto *sr = builder.CreateCall(llvm::Intrinsic::getDeclaration(llvmModule.get(),
+      llvm::Intrinsic::syncregion_start), {}); 
+    valueMapping[opInst.getResult(0)] = sr;
+    return success(); 
+  }
+
   return convertDialectAttributes(&op);
+
 
 }
 
