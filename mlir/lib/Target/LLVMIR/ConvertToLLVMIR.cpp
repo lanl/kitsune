@@ -37,7 +37,7 @@ void registerToLLVMIRTranslation() {
       },
       [](DialectRegistry &registry) {
         registry.insert<DLTIDialect, func::FuncDialect>();
-        registry.insert<LLVM::LLVMDialect, LLVM::LLVMTapirDialect, omp::OpenMPDialect>();
+        registry.insert<LLVM::LLVMDialect, LLVM::LLVMTapirDialect>();
         registerAllToLLVMIRTranslations(registry);
       });
 }

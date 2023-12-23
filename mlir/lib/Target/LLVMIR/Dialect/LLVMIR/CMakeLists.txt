@@ -12,6 +12,7 @@ add_mlir_translation_library(MLIRLLVMIRToLLVMTranslation
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRLLVMDialect
+  MLIRLLVMTapir
   MLIRSupport
   MLIRTargetLLVMIRImport
   )
@@ -25,6 +26,8 @@ add_mlir_translation_library(MLIRLLVMToLLVMIRTranslation
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRLLVMDialect
+  MLIRLLVMTapir
   MLIRSupport
   MLIRTargetLLVMIRExport
   )
+

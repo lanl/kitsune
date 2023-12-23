@@ -11,6 +11,6 @@ add_mlir_conversion_library(MLIRSCFToTapir
   Core
 
   LINK_LIBS PUBLIC
-  MLIRSCF
   MLIRTransforms
+  MLIRMemRefDialect
   )

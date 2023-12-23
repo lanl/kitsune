@@ -2,7 +2,7 @@
 
 llvm.func @tapir_ops() {
 //CHECK: @llvm.syncregion.start()
-  %sr = llvm_tapir.tapir_createsyncregion : !llvm.token
+  %sr = llvm_tapir.tapir_syncregion_start : !llvm.token
   llvm_tapir.detach %sr, ^bb1, ^bb2
 ^bb1:
   llvm_tapir.reattach %sr, ^bb2

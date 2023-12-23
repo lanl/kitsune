@@ -14,18 +14,16 @@
 
 namespace mlir {
 struct LogicalResult;
-class MLIRContext;
 class Pass;
 class RewritePattern;
 
 // Owning list of rewriting patterns.
-class OwningRewritePatternList;
+class RewritePatternSet;
 
 /// Collect a set of patterns to lower from scf.for, scf.if, and
 /// loop.terminator to CFG operations within the Tapir dialect, in particular
 /// convert structured control flow into CFG branch-based control flow.
-void populateParallelToTapirConversionPatterns(OwningRewritePatternList &patterns,
-                                         MLIRContext *ctx);
+void populateParallelToTapirConversionPatterns(RewritePatternSet &patterns);
 
 /// Creates a pass to convert scf.for, scf.if and loop.terminator ops to CFG.
 std::unique_ptr<Pass> createLowerToTapirPass();

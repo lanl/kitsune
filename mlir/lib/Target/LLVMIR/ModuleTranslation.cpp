@@ -569,40 +569,6 @@ ModuleTranslation::convertOperation(Operation &op,
     return op.emitError("LLVM Translation failed for operation: ")
            << op.getName();
 
-
-  
-  if (auto detachOp = dyn_cast<LLVM::Tapir_detach>(op)) {
-    llvm::DetachInst *detach = builder.CreateDetach(
-        blockMapping[detachOp.getSuccessor(0)],
-        blockMapping[detachOp.getSuccessor(1)],
-        valueMapping.lookup(detachOp.getOperand(0))); 
-    branchMapping.try_emplace(&opInst, detach); 
-    return success(); 
-  }
-
-  if (auto reattachOp = dyn_cast<LLVM::Tapir_reattach>(op)) {
-    llvm::ReattachInst *detach = builder.CreateReattach(
-        blockMapping[reattachOp.getSuccessor()],
-        valueMapping.lookup(reattachOp.getOperand(0))); 
-    branchMapping.try_emplace(&opInst, detach); 
-    return success(); 
-  }
-
-  if (auto syncOp = dyn_cast<LLVM::Tapir_sync>(op)) {
-    llvm::SyncInst *detach = builder.CreateSync(
-        blockMapping[syncOp.getSuccessor()],
-        valueMapping.lookup(syncOp.getOperand(0))); 
-    branchMapping.try_emplace(&opInst, detach); 
-    return success(); 
-  }
-
-  if (auto syncOp = dyn_cast<LLVM::Tapir_createsyncregion>(opInst)) {
-    auto *sr = builder.CreateCall(llvm::Intrinsic::getDeclaration(llvmModule.get(),
-      llvm::Intrinsic::syncregion_start), {}); 
-    valueMapping[opInst.getResult(0)] = sr;
-    return success(); 
-  }
-
   return convertDialectAttributes(&op);
 
 

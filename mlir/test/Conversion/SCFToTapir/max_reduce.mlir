@@ -3,13 +3,13 @@
 
 
 
-// CHECK-LABEL:           func @reduction_0(%arg0: f32, %arg1: f32) -> f32 attributes {passthrough = ["reduction", "noinline"]} {
-// CHECK:             %0 = cmpf ogt, %arg0, %arg1 : f32
-// CHECK:             %1 = select %0, %arg0, %arg1 : f32
+// CHECK-LABEL:     func.func @reduction_0(%arg0: f32, %arg1: f32) -> f32 attributes {passthrough = ["reduction", "noinline"]} {
+// CHECK:             %0 = arith.cmpf ogt, %arg0, %arg1 : f32
+// CHECK:             %1 = arith.select %0, %arg0, %arg1 : f32
 // CHECK:             return %1 : f32
 // CHECK:           }
 // CHECK:           func @simple_parallel_max_reduce_loop(%arg0: index, %arg1: index, %arg2: index, %arg3: f32) -> f32 {
-// CHECK:             %0 = "llvm_tapir.intr.createsyncregion"() : () -> !llvm.token
+// CHECK:             %0 = llvm_tapir.tapir_syncregion_start : !llvm.token
 // CHECK:             %1 = alloca() : memref<f32>
 // CHECK:             store %arg3, %1[] : memref<f32>
 // CHECK:             br ^bb1(%arg0 : index)
@@ -35,14 +35,14 @@
 // CHECK:           }
 
 
-func @simple_parallel_max_reduce_loop(%arg0: index, %arg1: index, %arg2: index, %arg3: f32) -> f32 {
+func.func @simple_parallel_max_reduce_loop(%arg0: index, %arg1: index, %arg2: index, %arg3: f32) -> f32 {
 
   %0 = scf.parallel (%i) = (%arg0) to (%arg1) step (%arg2) init(%arg3) -> f32 {
-    %cst = constant 42.0 : f32
+    %cst = arith.constant 42.0 : f32
     scf.reduce(%cst) : f32 {
     ^bb0(%lhs: f32, %rhs: f32):
-      %1 = cmpf "ogt", %lhs, %rhs : f32
-      %2 = select %1, %lhs, %rhs : f32
+      %1 = arith.cmpf "ogt", %lhs, %rhs : f32
+      %2 = arith.select %1, %lhs, %rhs : f32
       scf.reduce.return %2 : f32
     }
   }

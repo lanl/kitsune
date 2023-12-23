@@ -27,40 +27,6 @@ class LLVM_Builder<string builder> {
   string llvmBuilder = builder;
 }
 
-def LLVM_OneResultOpBuilder :
-  OpBuilderDAG<(ins "Type":$resultType, "ValueRange":$operands,
-    CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
-  [{
-    if (resultType) $_state.addTypes(resultType);
-    $_state.addOperands(operands);
-    for (auto namedAttr : attributes) {
-      $_state.addAttribute(namedAttr.first, namedAttr.second);
-    }
-  }]>;
-
-def LLVM_ZeroResultOpBuilder :
-  OpBuilderDAG<(ins "ValueRange":$operands,
-    CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
-  [{
-    $_state.addOperands(operands);
-    for (auto namedAttr : attributes) {
-      $_state.addAttribute(namedAttr.first, namedAttr.second);
-    }
-  }]>;
-
-// Compatibility builder that takes an instance of wrapped llvm::VoidType
-// to indicate no result.
-def LLVM_VoidResultTypeOpBuilder :
-  OpBuilderDAG<(ins "Type":$resultType, "ValueRange":$operands,
-    CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
-  [{
-    assert(isCompatibleType(resultType) && "result must be an LLVM type");
-    assert(resultType.isa<LLVMVoidType>() &&
-           "for zero-result operands, only 'void' is accepted as result type");
-    build($_builder, $_state, operands, attributes);
-  }]>;
-
-
 // Class for arithmetic binary operations.
 class LLVM_ArithmeticOpBase<Type type, string mnemonic,
                             string instName, list<Trait> traits = []> :

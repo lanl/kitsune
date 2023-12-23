@@ -12,27 +12,40 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/SCFToTapir/SCFToTapir.h"
-#include "../PassDetail.h"
-#include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Transforms/Utils.h"
+
+namespace mlir {
+#define GEN_PASS_DEF_SCFTOTAPIR
+#include "mlir/Conversion/Passes.h.inc"
+}
 
 using namespace mlir;
 using namespace mlir::scf;
 
 namespace {
 
-struct SCFToTapirPass : public SCFToTapirBase<SCFToTapirPass> {
+struct SCFToTapirPass 
+    : public impl::SCFToTapirBase<SCFToTapirPass> {
   void runOnOperation() override;
 };
 
@@ -52,7 +65,7 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
   SmallVector<ForOp, 4> forLoops; 
 
   auto *ctx = parallelOp.getContext(); 
-  auto sr = rewriter.create<LLVM::Tapir_createsyncregion>(loc, LLVM::LLVMTokenType::get(ctx)); 
+  auto sr = rewriter.create<LLVM::Tapir_syncregion_start>(loc, LLVM::LLVMTokenType::get(ctx)); 
   // For a parallel loop, we essentially need to create an n-dimensional loop
   // nest. We do this by translating to scf.for ops and have those lowered in
   // a further rewrite. 
@@ -60,19 +73,22 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
   // For reductions, we create an alloca for each and insert the appropriate
   // loads and stores
   SmallVector<Value, 4> reductionAllocas; 
+  Value one = rewriter.create<LLVM::ConstantOp>(
+	loc, rewriter.getIntegerType(64), rewriter.getI64IntegerAttr(1));
   //Value index = rewriter.create<ConstantIndexOp>(loc, 0); 
-  for(auto initVal : parallelOp.initVals()){
-    auto ptrTp = MemRefType::get({}, initVal.getType()); 
-    auto ra = rewriter.create<AllocaOp>(loc, ptrTp);
+  for(auto initVal : parallelOp.getInitVals()){
+    auto ptrTp = LLVM::LLVMPointerType::get(initVal.getType()); 
+    Value ra = rewriter.create<LLVM::AllocaOp>(loc, ptrTp, one, 0);
+    //auto ra = rewriter.create<memref::AllocaOp>(loc, ptrTp);
     //Value index = rewriter.create<ConstantIndexOp>(loc, 0); 
-    rewriter.create<StoreOp>(loc, initVal, ra);  
+    rewriter.create<LLVM::StoreOp>(loc, initVal, ra);  
     reductionAllocas.push_back(ra); 
   }
   SmallVector<Value, 4> ivs;
   ivs.reserve(parallelOp.getNumLoops());
   for (auto loop_operands :
-       llvm::zip(parallelOp.getInductionVars(), parallelOp.lowerBound(),
-                 parallelOp.upperBound(), parallelOp.step())) {
+       llvm::zip(parallelOp.getInductionVars(), parallelOp.getLowerBound(),
+                 parallelOp.getUpperBound(), parallelOp.getStep())) {
     Value iv, lower, upper, step;
     std::tie(iv, lower, upper, step) = loop_operands;
     ForOp forOp = rewriter.create<ForOp>(loc, lower, upper, step);
@@ -93,35 +109,35 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
 
     rewriter.setInsertionPointAfter(&op); 
 
-    Block &reduceBlock = reduce.reductionOperator().front();
-    auto arg = rewriter.create<LoadOp>(loc, reductionAllocas[rai]); 
+    Block &reduceBlock = reduce.getReductionOperator().front();
+    auto arg = rewriter.create<LLVM::LoadOp>(loc, reductionAllocas[rai]); 
 
     // Outlined the reduction op to a function
-    rewriter.setInsertionPoint(op.getParentOfType<FuncOp>()); 
-    auto type = reduce.operand().getType(); 
+    rewriter.setInsertionPoint(op.getParentOfType<func::FuncOp>()); 
+    auto type = reduce.getOperand().getType(); 
     FunctionType funtype = FunctionType::get(ctx, { type, type}, type ); 
-    auto outlinedFunc = rewriter.create<FuncOp>(loc, "reduction_" + std::to_string(rai), funtype);
-    outlinedFunc->setAttr("passthrough", ArrayAttr::get(
-      {StringAttr::get("reduction", ctx),
-       StringAttr::get("noinline", ctx)}, 
-      ctx)); 
+    auto outlinedFunc = rewriter.create<func::FuncOp>(loc, "reduction_" + std::to_string(rai), funtype);
+    outlinedFunc->setAttr("passthrough", ArrayAttr::get(ctx,
+      {StringAttr::get(ctx, "reduction"),
+       StringAttr::get(ctx, "noinline")} 
+      )); 
     
     // copy instructions to outlined func
     rewriter.setInsertionPointToStart(outlinedFunc.addEntryBlock()); 
-    BlockAndValueMapping bvm; 
+    IRMapping bvm; 
     for(auto it : llvm::zip(reduceBlock.getArguments(), outlinedFunc.getArguments()))
       bvm.map(std::get<0>(it), std::get<1>(it));
     for(Operation &op : reduceBlock.without_terminator())
       rewriter.clone(op, bvm); 
     
     Operation *term = reduceBlock.getTerminator(); 
-    rewriter.create<ReturnOp>(loc, bvm.lookup(term->getOperand(0))); 
+    rewriter.create<LLVM::ReturnOp>(loc, bvm.lookup(term->getOperand(0))); 
     
     // insert call to outlined func and store result in alloca
     rewriter.setInsertionPointAfter(arg); 
-    ValueRange values( {arg, reduce.operand() }); 
-    auto rv = rewriter.create<CallOp>(loc, outlinedFunc, values); 
-    auto store = rewriter.create<StoreOp>(loc, rv->getResult(0), reductionAllocas[rai++]); 
+    ValueRange values( {arg, reduce.getOperand() }); 
+    auto rv = rewriter.create<func::CallOp>(loc, outlinedFunc, values); 
+    rewriter.create<LLVM::StoreOp>(loc, rv->getResult(0), reductionAllocas[rai++]); 
 
     rewriter.eraseOp(reduce);
 
@@ -160,11 +176,11 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
     // block that has the induction variable and loop-carried values as arguments.
     // Split out all operations from the first block into a new block. Move all
     // body blocks from the loop body region to the region containing the loop.
-    auto *conditionBlock = &forOp.region().front();
+    auto *conditionBlock = &forOp.getRegion().front();
     auto *firstBodyBlock =
         rewriter.splitBlock(conditionBlock, conditionBlock->begin());
-    auto *lastBodyBlock = &forOp.region().back();
-    rewriter.inlineRegionBefore(forOp.region(), endBlock);
+    auto *lastBodyBlock = &forOp.getRegion().back();
+    rewriter.inlineRegionBefore(forOp.getRegion(), endBlock);
     auto iv = conditionBlock->getArgument(0);
 
     // Append the induction variable stepping logic to the last body block and
@@ -183,21 +199,21 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
       rewriter.setInsertionPointToEnd(lastBodyBlock); 
     } 
       
-    auto step = forOp.step();
-    auto stepped = rewriter.create<AddIOp>(loc, iv, step).getResult();
+    auto step = forOp.getStep();
+    auto stepped = rewriter.create<arith::AddIOp>(loc, iv, step).getResult();
     if (!stepped)
       return failure();
 
     SmallVector<Value, 8> loopCarried;
     loopCarried.push_back(stepped);
     loopCarried.append(terminator->operand_begin(), terminator->operand_end());
-    rewriter.create<BranchOp>(loc, conditionBlock, loopCarried);
+    rewriter.create<cf::BranchOp>(loc, conditionBlock, loopCarried);
     rewriter.eraseOp(terminator);
 
     // Compute loop bounds before branching to the condition.
     rewriter.setInsertionPointToEnd(initBlock);
-    Value lowerBound = forOp.lowerBound();
-    Value upperBound = forOp.upperBound();
+    Value lowerBound = forOp.getLowerBound();
+    Value upperBound = forOp.getUpperBound();
     if (!lowerBound || !upperBound)
       return failure();
 
@@ -207,18 +223,23 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
     destOperands.push_back(lowerBound);
     auto iterOperands = forOp.getIterOperands();
     destOperands.append(iterOperands.begin(), iterOperands.end());
-    rewriter.create<BranchOp>(loc, conditionBlock, destOperands);
+    rewriter.create<cf::BranchOp>(loc, conditionBlock, destOperands);
 
     // With the body block done, we can fill in the condition block.
     rewriter.setInsertionPointToEnd(conditionBlock);
     auto comparison =
-        rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
+        rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iv, upperBound);
 
-    rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
+    auto cb = rewriter.create<cf::CondBranchOp>(loc, comparison, firstBodyBlock,
                                   ArrayRef<Value>(), endBlock, ArrayRef<Value>());
+    cb->setAttr(mlir::LLVM::LLVMDialect::getLoopAttrName(),  DictionaryAttr::get(ctx, {
+	{StringAttr::get(ctx, "disable_unroll"), BoolAttr::get(ctx, true)}, 
+	{StringAttr::get(ctx, "tapir.loop.spawn.strategy"), 
+		IntegerAttr::get(IntegerType::get(ctx, 32), 1)}})); 
     // The result of the loop operation is the values of the condition block
     // arguments except the induction variable on the last iteration.
     rewriter.replaceOp(forOp, conditionBlock->getArguments().drop_front());
+
     
     // We only need to sync after the outermost loop
     if(outerMost){
@@ -229,8 +250,8 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
       // Insert loads after the sync
       rewriter.setInsertionPointToStart(syncBlock); 
       SmallVector<Value,4> loopResults(reductionAllocas); 
-      for(int i = 0; i < reductionAllocas.size(); i++){
-        loopResults[i] = rewriter.create<LoadOp>(loc, reductionAllocas[i]); 
+      for(size_t i = 0; i < reductionAllocas.size(); i++){
+        loopResults[i] = rewriter.create<LLVM::LoadOp>(loc, reductionAllocas[i]); 
       }
       rewriter.replaceOp(parallelOp, loopResults);
     }
@@ -240,20 +261,21 @@ ParallelLowering::matchAndRewrite(ParallelOp parallelOp,
 }
 
 void mlir::populateParallelToTapirConversionPatterns(
-    OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  patterns.insert<ParallelLowering>(ctx);
+    RewritePatternSet &patterns) {
+  patterns.add<ParallelLowering>(patterns.getContext());
 }
 
 void SCFToTapirPass::runOnOperation() {
-  OwningRewritePatternList patterns;
-  populateParallelToTapirConversionPatterns(patterns, &getContext());
-  // Configure conversion to lower out scf.for, scf.if, scf.parallel and
-  // scf.while. Anything else is fine.
+  RewritePatternSet patterns(&getContext());
+  LLVMTypeConverter converter(&getContext());
+  arith::populateArithToLLVMConversionPatterns(converter, patterns);
+  cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
+  populateFuncToLLVMConversionPatterns(converter, patterns);
+  populateParallelToTapirConversionPatterns(patterns);
+
+  // Configure conversion to lower out scf.parallel
   ConversionTarget target(getContext());
   target.addIllegalOp<scf::ParallelOp>();
-  //target.addLegalDialect<LLVM::LLVMDialect>();
-  //target.addLegalDialect<LLVM::LLVMTapirDialect>();
-
   target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

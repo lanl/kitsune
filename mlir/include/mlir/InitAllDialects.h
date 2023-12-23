@@ -27,10 +27,13 @@
 #include "mlir/Dialect/Bufferization/TransformOps/BufferizationTransformOps.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMArmNeonDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMArmSVEDialect.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
+#include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/GPU/TransformOps/GPUTransformOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTapirDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
@@ -91,12 +94,7 @@ inline void registerAllDialects(DialectRegistry &registry) {
                   gpu::GPUDialect,
                   index::IndexDialect,
                   LLVM::LLVMDialect,
-<<<<<<< HEAD
-=======
-                  LLVM::LLVMArmNeonDialect,
-                  LLVM::LLVMArmSVEDialect,
                   LLVM::LLVMTapirDialect,
->>>>>>> 8187eaa32525 (Fixed Tapir dialect, now passing identity test)
                   linalg::LinalgDialect,
                   math::MathDialect,
                   memref::MemRefDialect,
