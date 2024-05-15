@@ -414,7 +414,7 @@ CudaLoop::CudaLoop(Module &M, Module &KernelModule, const std::string &KN,
       Int32Ty,                         // threads-per-block
       KernelInstMixTy->getPointerTo(), // instruction mix info
       VoidPtrTy);                      // opaque cuda stream
-      
+
   KitCudaMemPrefetchFn =
       M.getOrInsertFunction("__kitcuda_mem_gpu_prefetch",
                             VoidPtrTy,  // return an opaque stream
@@ -986,14 +986,14 @@ void CudaLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   // supported) we can end up with multiple calls to the outlined
   // loop (which has been setup for dead code elimination) but can
   // cause invalid IR that trips us up when handling the GPU module
-  // code generation. This is a challenge in the Tapir design that 
-  // was not geared to handle some of the nuances of GPU target 
-  // transformations (and code gen).  To address this, we need to 
+  // code generation. This is a challenge in the Tapir design that
+  // was not geared to handle some of the nuances of GPU target
+  // transformations (and code gen).  To address this, we need to
   // do some clean up to keep the IR correct (or the verifier will
-  // fail on us...).  Specifically, we can no longer depend upon 
+  // fail on us...).  Specifically, we can no longer depend upon
   // DCE as it runs too late in the GPU transformation process...
   //
-  // TODO: This code can be shared between the cuda and hip targets... 
+  // TODO: This code can be shared between the cuda and hip targets...
   //
   Function *TargetKF = KernelModule.getFunction(KernelName);
   std::list<Instruction *> RemoveList;
@@ -1029,7 +1029,7 @@ void CudaLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   IRBuilder<> NewBuilder(&NewBB->front());
 
   // TODO: There is some potential here to share this code across both
-  // the hip and cuda transforms... 
+  // the hip and cuda transforms...
   LLVM_DEBUG(dbgs() << "\t*- code gen packing of " << OrderedInputs.size()
                     << " kernel args.\n");
   PointerType *VoidPtrTy = PointerType::getUnqual(Ctx);
@@ -1049,8 +1049,8 @@ void CudaLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
     i++;
 
     if (CodeGenPrefetch && V->getType()->isPointerTy()) {
-      LLVM_DEBUG(dbgs() << "\t\t- code gen prefetch for kernel arg #" 
-                        << i << "\n");
+      LLVM_DEBUG(dbgs() << "\t\t- code gen prefetch for kernel arg #" << i
+                        << "\n");
       Value *VoidPP = NewBuilder.CreateBitCast(V, VoidPtrTy);
       Value *SPtr = NewBuilder.CreateLoad(VoidPtrTy, CudaStream);
       Value *NewSPtr =
@@ -2005,7 +2005,7 @@ CudaABIOutputFile CudaABI::generatePTX() {
     FunctionAnalysisManager fam;
     CGSCCAnalysisManager cgam;
     ModuleAnalysisManager mam;
-    
+
     PassBuilder pb(PTXTargetMachine, pto);
     pb.registerModuleAnalyses(mam);
     pb.registerCGSCCAnalyses(cgam);
@@ -2013,7 +2013,7 @@ CudaABIOutputFile CudaABI::generatePTX() {
     pb.registerLoopAnalyses(lam);
     PTXTargetMachine->registerPassBuilderCallbacks(pb, false);
     pb.crossRegisterProxies(lam, fam, cgam, mam);
-    
+
     ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(optLevel);
     mpm.addPass(VerifierPass());
     LLVM_DEBUG(dbgs() << "\t\t* module: " << KernelModule.getName() << "\n");

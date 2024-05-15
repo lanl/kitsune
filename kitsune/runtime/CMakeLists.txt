@@ -72,7 +72,6 @@ target_include_directories(${KITRT}
 # set_property(TARGET ${KITRT} APPEND PROPERTY
 #   BUILD_RPATH "$ORIGIN/../lib${LLVM_LIBDIR_SUFFIX}:${PROJECT_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}")
 
-
 find_library(LIB_LLVM
   NAMES LLVM
   LLVM-${LLVM_VERSION_MAJOR}
@@ -140,13 +139,13 @@ endif()
 # kitsune/CMakeLists.txt). They are passed in via CMake because the Kitsune
 # runtime is treated as an "ExternalProject".
 #
-# Note on AMD HIP CMake details...  When is HIP not HIP?  When it is HIP... 
+# Note on AMD HIP CMake details...  When is HIP not HIP?  When it is HIP...
 # It is easy to confuse requirements for HIP as the HIP "language" vs. the
 # HIP runtime.   The language has tangled dependencies within a LLVM context
-# as they build around LLVM and Clang too.  Using some of the 'hip::host' 
+# as they build around LLVM and Clang too.  Using some of the 'hip::host'
 # targets are actually intended for the language and not runtime libraries.
-# Unfortunately, these details seem to be a moving target with ecah release 
-# of rocm/hip... 
+# Unfortunately, these details seem to be a moving target with ecah release
+# of rocm/hip...
 if (KITSUNE_HIP_ENABLE)
 
   if (NOT DEFINED ROCM_PATH)
@@ -154,7 +153,7 @@ if (KITSUNE_HIP_ENABLE)
     if (DEFINED $ENV{ROCM_PATH})
       message(STATUS "  using ROCM_PATH environment variable.")
       set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "AMD ROCM/HIP installation directory.")
-    else() 
+    else()
       message(STATUS "  selecting a common default install location.")
       set(ROCM_PATH "/opt/rocm" CACHE PATH "AMD ROCM/HIP installation directory.")
     endif()
@@ -177,7 +176,7 @@ if (KITSUNE_HIP_ENABLE)
 
   message(STATUS "hip include dir: ${hip_INCLUDE_DIR}")
   message(STATUS "hip library dir: ${hip_LIB_INSTALL_DIR}")
-  
+
   target_compile_definitions(${KITRT} PUBLIC KITRT_HIP_ENABLED)
   target_compile_definitions(${KITRT} PUBLIC __HIP_PLATFORM_AMD__)
   target_include_directories(${KITRT} PUBLIC ${hip_INCLUDE_DIR})

@@ -274,7 +274,7 @@ if (KITSUNE_HIP_ENABLE)
     if (DEFINED $ENV{ROCM_PATH})
       message(STATUS "  using ROCM_PATH environment variable.")
       set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "AMD ROCM/HIP installation directory.")
-    else() 
+    else()
       message(STATUS "  selecting a common default install location.")
       set(ROCM_PATH "/opt/rocm" CACHE PATH "AMD ROCM/HIP installation directory.")
     endif()
@@ -350,7 +350,6 @@ if (KITSUNE_OPENCILK_ENABLE)
   set(KITSUNE_OPENCILK_BUILD_COMPILE_FLAGS ""
     CACHE STRING
     "Additional C++ compiler flags needed to build Kokkos. These are only used when building Kitsune")
-
 
   # We pass some LLVM_* variables to make Cheetah behave as if it were an
   # in-tree build.

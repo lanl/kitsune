@@ -1716,7 +1716,7 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
     case llvm::TapirTargetID::Hip:
       CmdArgs.push_back(
           Args.MakeArgString(StringRef("-L") + KITSUNE_HIP_LIBRARY_DIR));
-      ExtractArgsFromString("-lamdhip64", CmdArgs, Args);      
+      ExtractArgsFromString("-lamdhip64", CmdArgs, Args);
       ExtractArgsFromString(KITSUNE_HIP_EXTRA_LINKER_FLAGS, CmdArgs, Args);
       break;
 
