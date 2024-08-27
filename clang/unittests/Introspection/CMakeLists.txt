@@ -15,6 +15,7 @@ clang_target_link_libraries(IntrospectionTests
   clangFrontend
   clangSerialization
   clangTooling
+  LLVMTapirOpts
   )
 target_link_libraries(IntrospectionTests
   PRIVATE

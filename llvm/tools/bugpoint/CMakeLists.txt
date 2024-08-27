@@ -18,6 +18,7 @@ set(LLVM_LINK_COMPONENTS
   ScalarOpts
   Support
   TapirOpts
+  Passes
   Target
   TargetParser
   TransformUtils

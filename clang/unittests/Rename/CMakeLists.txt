@@ -26,4 +26,5 @@ clang_target_link_libraries(ClangRenameTests
   clangTooling
   clangToolingCore
   clangToolingRefactoring
+  LLVMTapirOpts
   )

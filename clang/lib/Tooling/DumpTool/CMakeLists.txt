@@ -13,4 +13,5 @@ target_link_libraries(clang-ast-dump
   clangFrontend
   clangSerialization
   clangToolingCore
+  LLVMTapirOpts
 )

@@ -12,4 +12,5 @@ clang_target_link_libraries(RewriteTests
   clangRewrite
   clangSerialization
   clangTooling
+  LLVMTapirOpts
   )

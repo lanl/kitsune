@@ -20,6 +20,7 @@ clang_target_link_libraries(ASTMatchersTests
   clangFrontend
   clangSerialization
   clangTooling
+  LLVMTapirOpts
   )
 
 target_link_libraries(ASTMatchersTests
