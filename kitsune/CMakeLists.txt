@@ -81,6 +81,10 @@ foreach(target IN LISTS KITSUNE_ENABLE_TAPIR_TARGETS)
   endif()
 endforeach()
 
+# This is just the subpath to the internal directory. It will be interpreted
+# relative to some base path, typically the ${CMAKE_INSTALL_PREFIX}
+get_clang_resource_dir(CLANG_RESOURCE_SUBDIR)
+
 get_clang_resource_dir(CLANG_RESOURCE_INTDIR
   PREFIX ${CMAKE_BINARY_DIR})
 
@@ -95,7 +99,7 @@ if (KITSUNE_KOKKOS_ENABLE)
 
   set(KITSUNE_KOKKOS_BUILD_CONFIGURE_FLAGS ""
     CACHE STRING
-  "Additional options to be passed to be CMake when configuring Kokkos. These are only used when building Kitsune")
+    "Additional options to be passed to be CMake when configuring Kokkos. These are only used when building Kitsune")
 
   set(KITSUNE_KOKKOS_BUILD_COMPILE_FLAGS ""
     CACHE STRING
@@ -104,11 +108,12 @@ if (KITSUNE_KOKKOS_ENABLE)
   set(KITSUNE_KOKKOS_SRC_DIR  ${KITSUNE_TARGETS_BINARY_DIR}/kokkos/kokkos)
   set(KITSUNE_KOKKOS_BUILD_DIR ${KITSUNE_TARGETS_BINARY_DIR}/kokkos/build)
   set(KITSUNE_KOKKOS_STAMP_DIR ${KITSUNE_TARGETS_BINARY_DIR}/kokkos/stamp)
+  set(KITSUNE_KOKKOS_INSTALL_DIR ${KITSUNE_TARGETS_BINARY_DIR}/kokkos/install)
   set(KITSUNE_KOKKOS_BUILD_CMAKE_FLAGS
     -DCMAKE_CXX_COMPILER=${LLVM_RUNTIME_OUTPUT_INTDIR}/clang++
     -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-    -DCMAKE_INSTALL_PREFIX=${CLANG_RESOURCE_INSTALL_DIR}
+    -DCMAKE_INSTALL_PREFIX=${KITSUNE_KOKKOS_INSTALL_DIR}
     -DCMAKE_CXX_FLAGS=${KITSUNE_KOKKOS_BUILD_COMPILE_FLAGS}
     -DKokkos_ENABLE_SERIAL=ON
     -DBUILD_TESTING=OFF
@@ -147,53 +152,28 @@ if (KITSUNE_KOKKOS_ENABLE)
     CMAKE_ARGS          ${KITSUNE_KOKKOS_BUILD_CMAKE_FLAGS}
     PATCH_COMMAND       patch -p0 --input=${KITSUNE_KOKKOS_PATCH_EXCS}
     UPDATE_COMMAND      ""
-    UPDATE_DISCONNECTED FALSE
-    STEP_TARGETS        build)
+    UPDATE_DISCONNECTED FALSE)
 
-  # Copy the Kokkos files into a "staging" area. This is only needed to run
-  # the Kitsune + Kokkos tests.
-  add_custom_target(kokkos-copy-headers-to-build-dir ALL
-    # Copy all the headers directly from the source. These are installed as is
-    # anyway.
+  # Copy the Kokkos files into a "staging" area. This is needed to run the
+  # kitsune tests and also to allow kitsune to be run from the build directory
+  # without requiring it to be installed.
+  add_custom_target(kokkos-copy-to-build-dir ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${KITSUNE_KOKKOS_SRC_DIR}/core/src
-    ${KITSUNE_KOKKOS_SRC_DIR}/tpls/desul/include
-    ${CLANG_RESOURCE_INTDIR}/include
-
-    # We don't copy the entire build directory because we only want specific
-    # headers.
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${KITSUNE_KOKKOS_BUILD_DIR}/KokkosCore_config.h
-    ${KITSUNE_KOKKOS_BUILD_DIR}/KokkosCore_Config_DeclareBackend.hpp
-    ${KITSUNE_KOKKOS_BUILD_DIR}/KokkosCore_Config_FwdBackend.hpp
-    ${KITSUNE_KOKKOS_BUILD_DIR}/KokkosCore_Config_PostInclude.hpp
-    ${KITSUNE_KOKKOS_BUILD_DIR}/KokkosCore_Config_SetupBackend.hpp
-    ${CLANG_RESOURCE_INTDIR}/include
-
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${KITSUNE_KOKKOS_BUILD_DIR}/core/src/desul
-    ${CLANG_RESOURCE_INTDIR}/include/desul
-
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-    ${CLANG_RESOURCE_INTDIR}/lib64
-
-    # Copy the core libraries that are built. There are others that are also
-    # built, but these are the only ones that we care about.
-    #
-    # NOTE: These should be updated when the GIT_TAG is changed because the
-    # trailing version suffix may also change. There might be an automatic way
-    # to do this that does not involve copying the entire directory, and we
-    # probably should implement that at some point.
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${KITSUNE_KOKKOS_BUILD_DIR}/core/src/libkokkoscore.so
-    ${KITSUNE_KOKKOS_BUILD_DIR}/core/src/libkokkoscore.so.4.0
-    ${KITSUNE_KOKKOS_BUILD_DIR}/core/src/libkokkoscore.so.4.0.0
-    ${CLANG_RESOURCE_INTDIR}/lib64
-
-    COMMENT "Copying Kokkos files to the 'top-level' build directory"
+    ${KITSUNE_KOKKOS_INSTALL_DIR}
+    ${CLANG_RESOURCE_INTDIR}
+    COMMENT "Copying Kokkos to the 'top-level' build directory"
     VERBATIM USES_TERMINAL
   )
-  add_dependencies(kokkos-copy-headers-to-build-dir kokkos)
+  add_dependencies(kokkos-copy-to-build-dir kokkos)
+
+  # Add a custom target to install Kokkos to the final install directory with
+  # the rest of kitsune.
+  #
+  # NOTE: The trailing slash after the directory to copy is required
+  #
+  install(DIRECTORY ${KITSUNE_KOKKOS_INSTALL_DIR}/
+    DESTINATION ${CLANG_RESOURCE_INSTALL_DIR}
+    USE_SOURCE_PERMISSIONS)
 
   set(KITSUNE_KOKKOS_EXTRA_PREPROCESSOR_FLAGS
     ""
@@ -345,16 +325,17 @@ if (KITSUNE_OPENCILK_ENABLE)
   # mismatched.
   set(KITSUNE_OPENCILK_BUILD_CONFIGURE_FLAGS ""
     CACHE STRING
-  "Additional options to be passed to be CMake when configuring Kokkos. These are only used when building Kitsune")
+    "Additional options to be passed to be CMake when configuring Cheetah (the OpenCilk runtime). These are only used when building Kitsune")
 
   set(KITSUNE_OPENCILK_BUILD_COMPILE_FLAGS ""
     CACHE STRING
-    "Additional C++ compiler flags needed to build Kokkos. These are only used when building Kitsune")
+    "Additional C++ compiler flags needed to build Cheetah (the OpenCilk runtime). These are only used when building Kitsune")
 
   # We pass some LLVM_* variables to make Cheetah behave as if it were an
   # in-tree build.
   set(KITSUNE_CHEETAH_SOURCE_DIR ${KITSUNE_TARGETS_BINARY_DIR}/cheetah/cheetah)
   set(KITSUNE_CHEETAH_BINARY_DIR ${KITSUNE_TARGETS_BINARY_DIR}/cheetah/build)
+  set(KITSUNE_CHEETAH_INSTALL_DIR ${KITSUNE_TARGETS_BINARY_DIR}/cheetah/install)
   set(KITSUNE_CHEETAH_BUILD_CMAKE_FLAGS
     -DCMAKE_C_COMPILER=${LLVM_RUNTIME_OUTPUT_INTDIR}/clang
     -DCMAKE_CXX_COMPILER=${LLVM_RUNTIME_OUTPUT_INTDIR}/clang++
@@ -362,7 +343,7 @@ if (KITSUNE_OPENCILK_ENABLE)
     -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-    -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+    -DCMAKE_INSTALL_PREFIX=${KITSUNE_CHEETAH_INSTALL_DIR}
     -DCMAKE_CXX_FLAGS=${KITSUNE_OPENCILK_BUILD_COMPILE_FLAGS}
     -DCHEETAH_DEFAULT_TARGET_TRIPLE=${LLVM_DEFAULT_TARGET_TRIPLE}
     -DCHEETAH_DIRECTORY_PER_TARGET=ON
@@ -374,8 +355,6 @@ if (KITSUNE_OPENCILK_ENABLE)
     ${KITSUNE_OPENCILK_BUILD_CONFIGURE_FLAGS}
   )
 
-  message(STATUS "opencilk install prefix: ${CLANG_RESOURCE_INSTALL_DIR}")
-
   ExternalProject_Add(cheetah
     DEPENDS        clang lld llvm-config llvm-link
     GIT_REPOSITORY https://github.com/OpenCilk/cheetah.git
@@ -383,6 +362,32 @@ if (KITSUNE_OPENCILK_ENABLE)
     SOURCE_DIR     ${KITSUNE_CHEETAH_SOURCE_DIR}
     BINARY_DIR     ${KITSUNE_CHEETAH_BINARY_DIR}
     CMAKE_ARGS     ${KITSUNE_CHEETAH_BUILD_CMAKE_FLAGS})
+
+  # Copy the cheetah files into a "staging" area. This allows kitsune to be
+  # run from the build directory. The destination directory is set to
+  # ${CMAKE_BINARY_DIR} because Cheetah's build system is setup assuming that it
+  # is being installed to the "top-level" of LLVM. In order for everything to
+  # be copied correctly, we have to copy it to the "top-level" of the build
+  # directory.
+  add_custom_target(cheetah-copy-to-build-dir ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${KITSUNE_CHEETAH_INSTALL_DIR}
+    ${CMAKE_BINARY_DIR}
+    COMMENT "Copying OpenCilk to the 'top-level' build directory"
+    VERBATIM USES_TERMINAL
+  )
+  add_dependencies(cheetah-copy-to-build-dir cheetah)
+
+  # Add a custom target to install opencilk to the final install directory with
+  # the rest of kitsune. The destination directory is set to ${CMAKE_BINARY_DIR}
+  # since it is the install analog of ${CMAKE_BINARY_DIR}. See the comment
+  # above the cheetah-copy-to-build-dir target for more details.
+  #
+  # NOTE: The trailing slash after the directory to copy is required.
+  #
+  install(DIRECTORY ${KITSUNE_CHEETAH_INSTALL_DIR}/
+    DESTINATION ${CMAKE_INSTALL_PREFIX}
+    USE_SOURCE_PERMISSIONS)
 
   # The values here are populated given that we know where Cheetah will be
   # installed. The code to actual fetch, configure, build etc. is in
@@ -540,6 +545,13 @@ if(KITSUNE_INCLUDE_TESTS)
   add_subdirectory(test)
 endif()
 
+# Because we treat kitsune's runtime as an external project, we handle it the
+# same way we do the tapir targets i.e., we create an "install" directory
+# within the build directory into which all the files will be "installed" at
+# build time with a separate install command to copy these out to the actual
+# install directory for kitsune as specified by ${CMAKE_INSTALL_PREFIX}.
+set(KITSUNE_KITRT_INSTALL_DIR ${KITSUNE_BINARY_DIR}/kitrt)
+
 # We don't descend into the runtime subdirectory because that should only be
 # configured when the runtimes are built. All the cmake environment variables
 # that the runtime might need have to be passed through here.
@@ -555,7 +567,7 @@ endif()
 #       message(STATUS "${var}=${${var}}")
 #     endforeach()
 #
-ExternalProject_Add(kitsune-runtimes
+ExternalProject_Add(kitrt
   DEPENDS llvm-config clang LLVM
   SOURCE_DIR ${KITSUNE_SOURCE_DIR}/runtime
   STAMP_DIR ${KITSUNE_BINARY_DIR}/stamp
@@ -566,7 +578,7 @@ ExternalProject_Add(kitsune-runtimes
              -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
              -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
              -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
-             -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+             -DCMAKE_INSTALL_PREFIX=${KITSUNE_KITRT_INSTALL_DIR}
              -DCMAKE_COLOR_DIAGNOSTICS=${CMAKE_COLOR_DIAGNOSTICS}
              -DKITSUNE_CUDA_ENABLE=${KITSUNE_CUDA_ENABLE}
              -DKITSUNE_CUDA_INCLUDE_DIR=${KITSUNE_CUDA_INCLUDE_DIR}
@@ -585,9 +597,11 @@ ExternalProject_Add(kitsune-runtimes
              -DKITSUNE_ROCM_VERSION_MIN=${KITSUNE_ROCM_VERSION_MIN}
              -DKITRT_ENABLE_DEBUG=${KITRT_ENABLE_DEBUG}
              -DKITRT_ENABLE_VERBOSE=${KITRT_ENABLE_VERBOSE}
+             -DKITRT_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
              -DKITCUDA_ENABLE_NVTX=${KITCUDA_ENABLE_NVTX}
              -DCLANG_RESOURCE_INTDIR=${CLANG_RESOURCE_INTDIR}
              -DCLANG_RESOURCE_DIR=${CLANG_RESOURCE_INSTALL_DIR}
+             -DCLANG_RESOURCE_SUBDIR=${CLANG_RESOURCE_SUBDIR}
              -DLLVM_CONFIG_PATH=${LLVM_RUNTIME_OUTPUT_INTDIR}/llvm-config
              -DLLVM_VERSION_MAJOR=${LLVM_VERSION_MAJOR}
              -DLLVM_VERSION_MINOR=${LLVM_VERSION_MINOR}
@@ -609,3 +623,22 @@ ExternalProject_Add(kitsune-runtimes
   BUILD_ALWAYS TRUE
   CONFIGURE_HANDLED_BY_BUILD TRUE)
 
+# Copy the kitsune runtime files into a "staging" area. This allows kitsune to
+# be run from the build directory.
+add_custom_target(kitrt-copy-to-build-dir ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${KITSUNE_KITRT_INSTALL_DIR}
+  ${CMAKE_BINARY_DIR}
+  COMMENT "Copying kitrt to the 'top-level' build directory"
+  VERBATIM USES_TERMINAL
+)
+add_dependencies(kitrt-copy-to-build-dir kitrt)
+
+# Add a custom target to install opencilk to the final install directory with
+# the rest of kitsune.
+#
+# NOTE: The trailing slash after the directory to copy is required.
+#
+install(DIRECTORY ${KITSUNE_KITRT_INSTALL_DIR}/
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  USE_SOURCE_PERMISSIONS)

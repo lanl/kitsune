@@ -189,18 +189,24 @@ if (KITSUNE_HIP_ENABLE)
     BUILD_RPATH ${HIP_LIB_INSTALL_DIR})
 endif()
 
+# ${KITRT_INSTALL_PREFIX} will be set to ${CMAKE_INSTALL_PREFIX} for the broader
+# LLVM project that is being built. On the other hand, ${CMAKE_INSTALL_PREFIX}
+# will be set to some directory within the build directory into which this is
+# "installed" at build time (all this because libkitrt is treated as an
+# "external project". There is probably a better way of handling all this, but
+# this is what we are doing for now).
 set_target_properties(${KITRT} PROPERTIES
-  INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+  INSTALL_RPATH ${KITRT_INSTALL_PREFIX}/lib)
 
 install(TARGETS kitrt
-  DESTINATION ${CLANG_RESOURCE_DIR}/lib)
+  DESTINATION ${CLANG_RESOURCE_SUBDIR}/lib)
 
 # KITSUNE FIXME: Do we really need to install the runtime headers? Do we intend
 # this to be used by third-parties?
 install(FILES ${KITRT_HDRS}
-  DESTINATION ${CLANG_RESOURCE_DIR}/include/kitrt)
+  DESTINATION ${CLANG_RESOURCE_SUBDIR}/include/kitrt)
 
 # KITSUNE FIXME: Do we really need to install the headers for the targets?
 install(DIRECTORY cuda hip realm
-  DESTINATION ${CLANG_RESOURCE_DIR}/include/kitrt
+  DESTINATION ${CLANG_RESOURCE_SUBDIR}/include/kitrt
   FILES_MATCHING PATTERN "*.h")
