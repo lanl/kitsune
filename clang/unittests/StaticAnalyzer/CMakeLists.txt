@@ -33,7 +33,6 @@ clang_target_link_libraries(StaticAnalysisTests
   clangStaticAnalyzerCore
   clangStaticAnalyzerFrontend
   clangTooling
-  LLVMTapirOpts
   )
 
 target_link_libraries(StaticAnalysisTests

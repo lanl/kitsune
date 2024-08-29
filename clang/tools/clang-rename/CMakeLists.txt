@@ -16,7 +16,6 @@ clang_target_link_libraries(clang-rename
   clangTooling
   clangToolingCore
   clangToolingRefactoring
-  LLVMTapirOpts
   )
 
 install(FILES clang-rename.py

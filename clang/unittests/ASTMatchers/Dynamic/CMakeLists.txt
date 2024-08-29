@@ -18,7 +18,6 @@ clang_target_link_libraries(DynamicASTMatchersTests
   clangFrontend
   clangSerialization
   clangTooling
-  LLVMTapirOpts
   )
 
 target_link_libraries(DynamicASTMatchersTests

@@ -25,5 +25,4 @@ clang_target_link_libraries(SerializationTests
   clangSerialization
   clangTooling
   clangASTMatchers
-  LLVMTapirOpts
   )

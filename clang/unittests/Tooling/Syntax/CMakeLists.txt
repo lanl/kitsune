@@ -21,7 +21,6 @@ clang_target_link_libraries(SyntaxTests
   clangTooling
   clangToolingCore
   clangToolingSyntax
-  LLVMTapirOpts
   )
 
 target_link_libraries(SyntaxTests

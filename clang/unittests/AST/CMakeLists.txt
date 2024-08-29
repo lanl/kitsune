@@ -49,7 +49,6 @@ clang_target_link_libraries(ASTTests
   clangLex
   clangSerialization
   clangTooling
-  LLVMTapirOpts
   )
 
 target_link_libraries(ASTTests

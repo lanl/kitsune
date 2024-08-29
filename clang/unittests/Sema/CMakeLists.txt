@@ -21,7 +21,6 @@ clang_target_link_libraries(SemaTests
   clangSema
   clangSerialization
   clangTooling
-  LLVMTapirOpts
   )
 
 target_link_libraries(SemaTests

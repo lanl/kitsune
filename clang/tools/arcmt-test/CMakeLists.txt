@@ -13,5 +13,4 @@ clang_target_link_libraries(arcmt-test
   clangFrontend
   clangLex
   clangSerialization
-  LLVMTapirOpts
   )

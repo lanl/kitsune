@@ -16,5 +16,4 @@ clang_target_link_libraries(diagtool
   PRIVATE
   clangBasic
   clangFrontend
-  LLVMTapirOpts
   )
