@@ -173,7 +173,7 @@ void OpenCilkABI::prepareModule() {
     // Parse the bitcode file.  This call imports structure definitions, but not
     // function definitions.
     if (std::unique_ptr<Module> ExternalModule =
-        parseIRFile(path.getValue(), SMD, C)) {
+        parseIRFile(RuntimeBCPath, SMD, C)) {
       // Get the original DiagnosticHandler for this context.
       std::unique_ptr<DiagnosticHandler> OrigDiagHandler =
           C.getDiagnosticHandler();

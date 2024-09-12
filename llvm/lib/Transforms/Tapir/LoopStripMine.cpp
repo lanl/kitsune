@@ -1558,7 +1558,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
   // accumulate reductions in main loop
   const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
-  std::set<CallInst*> reductions;
+  std::set<std::pair<CallInst*, Type*>> reductions;
   for (BasicBlock *BB : blocks){
     for (Instruction &I : *BB) {
       if(auto ci = dyn_cast<CallInst>(&I)){
@@ -1566,7 +1566,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
           LLVM_DEBUG(dbgs() << "Found reduction var: " << ci->getArgOperand(0)->getName() << 
                                "with reduction function: " << f->getName() << "\n"); 
-          reductions.insert(ci); 
+          auto ty = ci->getArgOperand(1)->getType(); 
+          reductions.insert(std::make_pair(ci, ty)); 
           //TODO: check the type to confirm valid reduction
         }
       }
@@ -1576,7 +1577,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // accumulate reductions in epilog loop
   LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
 
-  std::vector<std::tuple<CallInst*, Value* , Value*>> redMap; 
+  std::vector<std::tuple<CallInst*, Value* , Value*, Type*>> redMap; 
   // TODO: Modify the strip mining outer loop to be smaller: currently we are
   // stack allocating n/2048 reduction values.
   // TODO: Initialize local reductions with unit values
@@ -1591,12 +1592,13 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
                                ConstantInt::get(TripCount->getType(), Count),
                                "stripiter");
   auto nred = RB.CreateAdd(outerIters, ConstantInt::get(outerIters->getType(), 1)); 
-  for(CallInst* ci : reductions){
+  for(auto &pair : reductions){
     // TODO: generic allocation/free calls
+    auto ci = pair.first; 
     auto ptr = ci->getArgOperand(0); 
-    auto ty = dyn_cast<PointerType>(ptr->getType())->getArrayElementType(); 
+    auto ty = pair.second; 
     auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
-    auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(nred->getType()))); 
+    auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(ty))); 
     auto al = RB.CreateCall(M->getOrInsertFunction("gpuManagedMalloc", gmmTy), {arrSize}); 
     //auto al = RB.CreateBitCast(rm, ty); 
     //auto al = RB.CreateAlloca(ty, nred, ptr->getName() + "_reduction");
@@ -1604,7 +1606,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     auto lptr = BH.CreateBitCast(
       BH.CreateGEP(ty, al, NewIdx), 
       ptr->getType());                             
-    redMap.push_back(std::make_tuple(ci, ptr, al)); 
+    redMap.push_back(std::make_tuple(ci, ptr, al, ty)); 
     // Assume there is more than one element, and
     // use the first element for the first iteration of the loop.
     // roughly: 
@@ -1695,8 +1697,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // For each reduction, get the allocated thread local reduced values and
     // reduce them. 
     for(auto& kv : redMap){
-      const auto [ ci, ptr, al ] = kv; 
-      auto ty = dyn_cast<PointerType>(ptr->getType())->getArrayElementType(); 
+      const auto [ ci, ptr, al, ty ] = kv; 
       auto lptr = BB.CreateBitCast(
         BB.CreateGEP(ty, al, Idx), 
         ptr->getType());                             
