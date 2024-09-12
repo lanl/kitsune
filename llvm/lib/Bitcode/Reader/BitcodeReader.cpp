@@ -2260,6 +2260,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::KitKernel;
   case bitc::ATTR_KIND_KIT_DEVICE:
     return Attribute::KitDevice;
+  case bitc::ATTR_KIND_KIT_REDUCTION:
+    return Attribute::KitsuneReduction;
   }
 }
 

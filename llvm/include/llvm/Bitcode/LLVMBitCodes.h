@@ -813,6 +813,7 @@ enum AttributeKindCodes {
   ATTR_KIND_KIT_KERNEL_PROPS = 109,
   ATTR_KIND_KIT_KERNEL = 110,
   ATTR_KIND_KIT_DEVICE = 111,
+  ATTR_KIND_KIT_REDUCTION = 112,
 };
 
 enum ComdatSelectionKindCodes {
