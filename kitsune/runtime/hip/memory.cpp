@@ -92,7 +92,7 @@ __attribute__((malloc)) void *__kithip_mem_calloc_managed(size_t count,
   return (void *)memp;
 }
 
-__attribute__((malloc)) void *__kithip__mem_realloc_managed(void *ptr,
+__attribute__((malloc)) void *__kithip_mem_realloc_managed(void *ptr,
                                                             size_t size) {
   assert(size != 0 && "zero-valued size!");
   void *memptr = nullptr;

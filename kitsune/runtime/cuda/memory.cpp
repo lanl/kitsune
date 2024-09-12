@@ -124,7 +124,7 @@ __kitcuda_mem_calloc_managed(size_t count, size_t element_size) {
   return (void *)memp;
 }
 
-__attribute__((malloc)) void *__kitcuda__mem_realloc_managed(void *ptr,
+__attribute__((malloc)) void *__kitcuda_mem_realloc_managed(void *ptr,
                                                              size_t size) {
   assert(size != 0 && "zero-valued size!");
 
