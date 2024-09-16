@@ -57,9 +57,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifndef NPY_TARGET_VERSION
 #include "kitrt.h"
-#endif
 
 #include <cuda.h>
 
@@ -294,9 +292,9 @@ extern void __kitcuda_memcpy_sym_to_device(void *host_sym, uint64_t dev_sym,
  * @param threads_per_blk - threads per block (set to zero for auto determination).
  */
 extern void* __kitcuda_launch_kernel(const void *fat_bin, const char *kern_name,
-                                     void **kern_args, uint64_t trip_count, 
+                                     void **kern_args, uint64_t trip_count,
                                      int threads_per_blk,
-				     const KitRTInstMix *inst_mix,
+                                     const KitRTInstMix *inst_mix,
                                      void *opaque_stream);
 
 /**
@@ -311,12 +309,12 @@ extern void* __kitcuda_launch_kernel(const void *fat_bin, const char *kern_name,
  */
 extern void __kitcuda_use_occupancy_launch(bool enable);
 
-/** 
+/**
  * Enable/Disable the tuning of occupancy-based calculations for
  * the determination of kernel launch parameters.  If the `enable`
- * parameter is set to `true` both occupancy-based launches and 
- * the refinement of the occupancy-driven results will be used. 
- * `enable == true` will enable occupancy_launches. 
+ * parameter is set to `true` both occupancy-based launches and
+ * the refinement of the occupancy-driven results will be used.
+ * `enable == true` will enable occupancy_launches.
  *
  * @param enable - enable/disable tuned occupancy launches.
  */
@@ -368,7 +366,7 @@ extern void __kitcuda_set_custom_launch_params(unsigned blks_per_grid,
                                                unsigned threads_per_blk);
 
 /**
- * Return a thread-aware stream. 
+ * Return a thread-aware stream.
  */
 extern void* __kitcuda_get_thread_stream();
 
