@@ -62,6 +62,7 @@
 #define NPY_TARGET_VERSION NPY_1_22_API_VERSION
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "../kitcuda.h"
+#include "../../memory_map.h"
 #include <numpy/arrayobject.h>
 
 typedef struct {
@@ -113,13 +114,6 @@ static void __kitrt_NumPyFree(void *ctx, void *ptr, size_t size) {
   funcs->free(ptr);
 }
 
-static KitRTAllocatorFuncs __kitrt_sys_allocators_ctx = {
-  malloc, 
-  calloc, 
-  realloc,
-  free
-};
-
 static KitRTAllocatorFuncs __kitrt_cuda_allocators_ctx = {
   __kitcuda_mem_alloc_managed,
   __kitcuda_mem_calloc_managed,
@@ -139,25 +133,12 @@ static PyDataMem_Handler __kitrt_data_handler = {
   }
 };
 
-static PyDataMem_Handler __sys_data_handler = {
-  "kit_rt_data_allocator",
-  1,
-  {
-    &__kitrt_sys_allocators_ctx,
-    __kitrt_NumPyMalloc,
-    __kitrt_NumPyCalloc,
-    __kitrt_NumPyRealloc,
-    __kitrt_NumPyFree
-  }
-};
-
-static PyObject *kitrt_InfoMethod() {
-  extern void __kitrt_print_memory_map();
+static PyObject *kitrt_InfoMethod(PyObject*, PyObject*) {
   __kitrt_print_memory_map();
   Py_RETURN_NONE;
 }
 
-static PyObject *kitrt_EnableMemHandler() {
+static PyObject *kitrt_EnableMemHandler(PyObject*, PyObject*) {
   PyObject *kitrt_handler = PyCapsule_New(&__kitrt_data_handler, "mem_handler", NULL);
   if (kitrt_handler != NULL) {
     (void)PyDataMem_SetHandler(kitrt_handler);
@@ -166,7 +147,7 @@ static PyObject *kitrt_EnableMemHandler() {
   return kitrt_handler;
 }
 
-static PyObject *kitrt_DisableMemHandler() {
+static PyObject *kitrt_DisableMemHandler(PyObject*, PyObject*) {
   (void)PyDataMem_SetHandler(NULL);
   return NULL;
 }
@@ -190,7 +171,7 @@ static PyModuleDef def = {
 };
 
 
-PyMODINIT_FUNC PyInit_kitrt(void) {
+extern "C" PyMODINIT_FUNC PyInit_kitrt(void) {
   import_array();
   
   PyObject *kitrt_handler = PyCapsule_New(&__kitrt_data_handler, "mem_handler", NULL);
