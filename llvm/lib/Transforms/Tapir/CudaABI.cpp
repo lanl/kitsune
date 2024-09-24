@@ -1911,8 +1911,6 @@ void CudaABI::registerFatbinary(GlobalVariable *Fatbinary) {
   //
   const int FATBINARY_MAGIC_ID = 0x466243B1;
   const int FATBINARY_VERSION = 1;
-  const char *FATBIN_CONTROL_SECTION_NAME = ".nvFatBinSegment";
-  const char *FATBIN_DATA_SECTION_NAME = ".nv_fatbin";
 
   LLVMContext &Ctx = M.getContext();
   Type *VoidTy = Type::getVoidTy(Ctx);
@@ -1925,7 +1923,6 @@ void CudaABI::registerFatbinary(GlobalVariable *Fatbinary) {
   Constant *Zeros[] = {ConstantInt::get(DL.getIndexType(FatbinStrTy), 0),
                        ConstantInt::get(DL.getIndexType(FatbinStrTy), 0)};
 
-  Fatbinary->setSection(FATBIN_DATA_SECTION_NAME);
   Constant *FatbinaryPtr = ConstantExpr::getGetElementPtr(
       Fatbinary->getValueType(), Fatbinary, Zeros);
 
@@ -1943,7 +1940,6 @@ void CudaABI::registerFatbinary(GlobalVariable *Fatbinary) {
   GlobalVariable *Wrapper =
       new GlobalVariable(M, WrapperTy, true, GlobalValue::InternalLinkage,
                          WrapperS, "_cuabi_wrapper");
-  Wrapper->setSection(FATBIN_CONTROL_SECTION_NAME);
   Wrapper->setAlignment(Align(DL.getPrefTypeAlign(Wrapper->getType())));
 
   // The rest of the registration details are tucked into a constructor
