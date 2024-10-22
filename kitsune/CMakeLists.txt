@@ -192,28 +192,28 @@ if (KITSUNE_KOKKOS_ENABLE)
 endif()
 
 if (KITSUNE_CUDA_ENABLE)
-  message(STATUS "kitsune: CUDA enabled.")
+  message(STATUS "Kitsune: CUDA target enabled")
+
   find_package(CUDAToolkit ${KITSUNE_CUDA_VERSION_MIN} REQUIRED)
 
+  # FIXME: There is no guarantee that CUDA_HOME is set in the environment.
+  # Perhaps we should require it? Or does find_package end up adding it to the
+  # environment?
   set(KITSUNE_CUDA_PREFIX $ENV{CUDA_HOME})
   set(KITSUNE_CUDA_INCLUDE_DIR ${CUDAToolkit_INCLUDE_DIRS})
   set(KITSUNE_CUDA_BINARY_DIR ${CUDAToolkit_BIN_DIR})
   set(KITSUNE_CUDA_LIBRARY_DIR ${CUDAToolkit_LIBRARY_DIR})
-  set(KITSUNE_CUDA_STUBS_DIR "${KITSUNE_CUDA_LIBRARY_DIR}/stubs")
   set(KITSUNE_CUDA_LIBDEVICE_DIR "${KITSUNE_CUDA_PREFIX}/nvvm/libdevice")
 
-  message(STATUS "CUDA prefix: ${KITSUNE_CUDA_PREFIX}")
+  message(STATUS "  CUDA prefix: ${KITSUNE_CUDA_PREFIX}")
 
   find_library(KITSUNE_CUDA_LIB_CUDART cudart REQUIRED
     PATHS ${KITSUNE_CUDA_LIBRARY_DIR}
     NO_DEFAULT_PATH)
 
   # This should almost always be the libcuda that is installed on the system,
-  # so look for it in the "usual" places. In some cases, both /usr/lib and
-  # /usr/lib64 are present with libcuda in the latter. But cmake does not seem
-  # to look there, so force it to.
-  find_library(KITSUNE_CUDA_LIB_CUDA cuda REQUIRED
-    HINTS /usr/lib64 /usr/local/lib64)
+  # so look for it in the "usual" places.
+  find_library(KITSUNE_CUDA_LIB_CUDA cuda REQUIRED)
 
   find_library(KITSUNE_CUDA_LIB_NVPTX_STATIC nvptxcompiler_static REQUIRED
     PATHS ${KITSUNE_CUDA_LIBRARY_DIR}
@@ -248,52 +248,51 @@ if (KITSUNE_CUDA_ENABLE)
 endif()
 
 if (KITSUNE_HIP_ENABLE)
-  message(STATUS "kitsune: HIP enabled.")
+  message(STATUS "Kitsune: HIP target enabled.")
+
+  # Apparently, ROCM_PATH needs to be set for Hip's build system to work
+  # correctly. It is not clear if this is a problem with ROCM/HIP or a weird
+  # interaction between that and Darwin. Whatever the case, we need this (pretty
+  # lousy) workaround.
   if (NOT DEFINED ROCM_PATH)
-    message(STATUS "Kitsune HIP support enabled but ROCM_PATH not set.")
+    message(STATUS "  Kitsune HIP support enabled but ROCM_PATH not set.")
     if (DEFINED $ENV{ROCM_PATH})
-      message(STATUS "  using ROCM_PATH environment variable.")
+      message(STATUS "  Using ROCM_PATH environment variable.")
       set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "AMD ROCM/HIP installation directory.")
     else()
-      message(STATUS "  selecting a common default install location.")
+      message(STATUS "  Using the default install location [/opt/rocm].")
       set(ROCM_PATH "/opt/rocm" CACHE PATH "AMD ROCM/HIP installation directory.")
     endif()
   endif()
   message(STATUS "ROCm/HIP path: ${ROCM_PATH}")
+
+  # The CMAKE_MODULE_PATH needs to be updated, probably because HIP doesn't know
+  # how to find itself. Or something mad like that. I have given up trying to
+  # write sane comments explaining all the workarounds to get AMD's software
+  # stack working.
   list(APPEND CMAKE_MODULE_PATH "${ROCM_PATH}/lib/cmake/hip")
-  message(STATUS "   updated cmake module search path: ${CMAKE_MODULE_PATH}")
+  message(STATUS "   Updated cmake module search path: ${CMAKE_MODULE_PATH}")
+
+  # Now we can finally look for the HIP package ...
   find_package(HIP MODULE REQUIRED)
+
+  # ... but apparently we need to explicitly include the .cmake file otherwise
+  # we don't get the variables that we need. WTH!
   include(${ROCM_PATH}/lib/cmake/hip/hip-config.cmake)
 
-  find_library(LIB_AMDHIP64 amdhip64 REQUIRED
-    PATHS ${HIP_LIBRARY_INSTALL_DIR}
-    ${ROCM_PATH}/lib)
-
-  message(STATUS "ROCm/HIP path: ${ROCM_PATH}")
-  list(APPEND CMAKE_MODULE_PATH "${ROCM_PATH}/lib/cmake/hip")
-  message(STATUS "   updated cmake module search path: ${CMAKE_MODULE_PATH}")
-  find_package(HIP MODULE REQUIRED)
-  include(${ROCM_PATH}/lib/cmake/hip/hip-config.cmake)
-
-  find_library(LIB_AMDHIP64 amdhip64 REQUIRED
-    PATHS ${HIP_LIB_INSTALL_DIR}
-    ${ROCM_PATH}/lib)
-
-  set(KITSUNE_HIP_PREFIX ${HIP_LIBRARY_INSTALL_DIR})
+  # There ought to be a better way to set the HIP_PREFIX rather than simply
+  # relying on ROCM_PATH, but if wishes were horses ...
+  set(KITSUNE_HIP_PREFIX ${ROCM_PATH})
   set(KITSUNE_HIP_INCLUDE_DIR ${HIP_INCLUDE_DIR})
   set(KITSUNE_HIP_LIBRARY_DIR ${HIP_LIB_INSTALL_DIR})
 
-  message(STATUS "hip include dir: ${HIP_INCLUDE_DIR}")
-  message(STATUS "hip library dir: ${HIP_LIB_INSTALL_DIR}")
+  message(STATUS "  Hip prefix: ${KITSUNE_HIP_PREFIX}")
+  message(STATUS "  Hip include dir: ${KITSUNE_HIP_INCLUDE_DIR}")
+  message(STATUS "  Hip library dir: ${KITSUNE_HIP_LIBRARY_DIR}")
 
-  set(KITSUNE_HIP_DEFAULT_PREPROCESSOR_FLAGS
-    "-D_tapir_hip_target")
-
-  set(KITSUNE_HIP_DEFAULT_COMPILER_FLAGS
-    "")
-
-  set(KITSUNE_HIP_DEFAULT_LINKER_FLAGS
-    "-L${ROCM_PATH}/lib -L${ROCM_PATH}/hip/lib -lamdhip64 -lm")
+  find_library(KITSUNE_HIP_LIB_AMDHIP64 amdhip64 REQUIRED
+    PATHS ${KITSUNE_HIP_LIBRARY_DIR} ${ROCM_PATH}/lib
+    NO_DEFAULT_PATH)
 
   set(KITSUNE_HIP_EXTRA_PREPROCESSOR_FLAGS
     ""
@@ -311,13 +310,15 @@ if (KITSUNE_HIP_ENABLE)
     "Additional linker flags needed for the HIP target")
 
   set(KITSUNE_HIP_BITCODE_DIR "${ROCM_PATH}/amdgcn/bitcode/")
-  find_file(KITSUNE_HIP_BITCODE_LOC hip.bc REQUIRED
+  find_file(KITSUNE_HIP_BITCODE_FILE hip.bc REQUIRED
     PATHS ${KITSUNE_HIP_BITCODE_DIR}
     NO_DEFAULT_PATH)
   message(STATUS "hip bitcode file location: ${KITSUNE_HIP_BITCODE_DIR}")
 endif()
 
 if (KITSUNE_OPENCILK_ENABLE)
+  message(STATUS "Kitsune: OpenCilk target enabled")
+
   # We currently don't allow using a pre-built Cheetah. It would have to be
   # built with a "compatible" version of clang which is possible by using a
   # vanilla clang build of the same version, but it's probably not worth all the
@@ -421,7 +422,9 @@ if (KITSUNE_OPENCILK_ENABLE)
 endif()
 
 if (KITSUNE_OPENMP_ENABLE)
-  # Do we need to check for libomp?
+  message(STATUS "Kitsune: OpenMP target enabled")
+
+  # TODO: Do we need to check for libomp?
 
   set(KITSUNE_OPENMP_DEFAULT_PREPROCESSOR_FLAGS
     "")
@@ -449,9 +452,14 @@ if (KITSUNE_OPENMP_ENABLE)
 endif()
 
 if (KITSUNE_QTHREADS_ENABLE)
+  message(STATUS "Kitsune: Qthreads target enabled")
+
   # FIXME: Do find_package or something here for qthreads. That will set
   # QTHREADS_INCLUDE_DIR and QTHREADS_LIBRARY_DIR below.
   message(FATAL_ERROR "Finding package for QThreads has not been implemented")
+
+  # FIXME: Remove the KITSUNE_QTHREADS_DEFAULT_* flags. Those should be moved
+  # to clang/lib/Driver/ToolChain.cpp when we resurrect the qthreads target.
 
   # TODO: Do we really need the qthreads include directory to be in the search
   # path?
@@ -481,9 +489,14 @@ if (KITSUNE_QTHREADS_ENABLE)
 endif()
 
 if (KITSUNE_REALM_ENABLE)
+  message(STATUS "Kitsune: Realm target enabled")
+
   # FIXME: Do find_package or something here for realm. That will set
   # Realm_LIBRARY_DIR and other such variables which are used below.
   message(FATAL_ERROR "Finding package for Realm has not been implemented")
+
+  # FIXME: Remove the KITSUNE_REALM_DEFAULT_* flags. Those should be moved
+  # to clang/lib/Driver/ToolChain.cpp when we resurrect the Realm target.
 
   set(KITSUNE_REALM_DEFAULT_PREPROCESSOR_FLAGS
     "")
@@ -580,21 +593,25 @@ ExternalProject_Add(kitrt
              -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
              -DCMAKE_INSTALL_PREFIX=${KITSUNE_KITRT_INSTALL_DIR}
              -DCMAKE_COLOR_DIAGNOSTICS=${CMAKE_COLOR_DIAGNOSTICS}
+             -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON
+             -DKITSUNE_CUDA_VERSION_MIN=${KITSUNE_CUDA_VERSION_MIN}
+             -DKITSUNE_ROCM_VERSION_MIN=${KITSUNE_ROCM_VERSION_MIN}
              -DKITSUNE_CUDA_ENABLE=${KITSUNE_CUDA_ENABLE}
              -DKITSUNE_CUDA_INCLUDE_DIR=${KITSUNE_CUDA_INCLUDE_DIR}
              -DKITSUNE_CUDA_BINARY_DIR=${KITSUNE_CUDA_BINARY_DIR}
              -DKITSUNE_CUDA_LIBRARY_DIR=${KITSUNE_CUDA_LIBRARY_DIR}
-             -DKITSUNE_CUDA_STUBS_DIR=${KITSUNE_CUDA_STUBS_DIR}
              -DKITSUNE_CUDA_LIB_CUDA=${KITSUNE_CUDA_LIB_CUDA}
              -DKITSUNE_CUDA_LIB_CUDART=${KITSUNE_CUDA_LIB_CUDART}
              -DKITSUNE_CUDA_LIB_NVPTX_STATIC=${KITSUNE_CUDA_LIB_NVPTX_STATIC}
              -DKITSUNE_HIP_ENABLE=${KITSUNE_HIP_ENABLE}
+             -DKITSUNE_HIP_PREFIX=${KITSUNE_HIP_PREFIX}
+             -DKITSUNE_HIP_INCLUDE_DIR=${KITSUNE_HIP_INCLUDE_DIR}
+             -DKITSUNE_HIP_LIBRARY_DIR=${KITSUNE_HIP_LIBRARY_DIR}
+             -DKITSUNE_HIP_LIB_AMDHIP64=${KITSUNE_HIP_LIB_AMDHIP64}
              -DKITSUNE_OPENCILK_ENABLE=${KITSUNE_OPENCILK_ENABLE}
              -DKITSUNE_OPENMP_ENABLE=${KITSUNE_OPENMP_ENABLE}
              -DKITSUNE_QTHREADS_ENABLE=${KITSUNE_QTHREADS_ENABLE}
              -DKITSUNE_REALM_ENABLE=${KITSUNE_REALM_ENABLE}
-             -DKITSUNE_CUDA_VERSION_MIN=${KITSUNE_CUDA_VERSION_MIN}
-             -DKITSUNE_ROCM_VERSION_MIN=${KITSUNE_ROCM_VERSION_MIN}
              -DKITRT_ENABLE_DEBUG=${KITRT_ENABLE_DEBUG}
              -DKITRT_ENABLE_VERBOSE=${KITRT_ENABLE_VERBOSE}
              -DKITRT_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}

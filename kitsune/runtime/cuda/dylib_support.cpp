@@ -48,21 +48,21 @@
 //  SUCH DAMAGE.
 //
 //===----------------------------------------------------------------------===//
+//
+// To support separate compiliation units within the library the "DL" header can
+// either provide us with external or local declarations.  This file is the only
+// spot where the external declaration mode should be disabled as the entry
+// points will all be declared at global scope here and used elsewhere via
+// "extern" access.
 
 #include <cstdio>
 
-//
-// To support separate compiliation units within the library the
-// "DL" header can either provide us with external or local
-// declarations.  This file is the only spot where the external
-// declaration mode should be disabled as the entry points will
-// all be declared at global scope here and used elsewhere via
-// "extern" access.
-//
+// TODO: We should determine why we need to disable "extern" on decl's in
+// certain cases. There may be a better way of doing this.
 #define __KITRT_DISABLE_EXTERN_DECLS__
 #include "kitcuda.h"
 #include "kitcuda_dylib.h"
-
+#undef __KITRT_DISABLE_EXTERN_DECLS__
 
 // TODO: Any reason to provide this via an environment variable?
 static const char *CUDA_DSO_LIBNAME = "libcuda.so";
@@ -70,24 +70,24 @@ static const char *CUDA_DSO_LIBNAME = "libcuda.so";
 bool __kitcuda_load_symbols() {
   KIT_NVTX_PUSH("kitcuda:load_symbols", KIT_NVTX_INIT);
 
-  // NOTE: The handle variable below is named to support use of 
-  // macros for each load call below -- changing the name will 
-  // break things... TODO: we should probably fix this... 
+  // NOTE: The handle variable below is named to support use of macros for each
+  // load call below -- changing the name will break things... TODO: we should
+  // probably fix this...
   static void *kitrt_dl_handle = nullptr;
   if (kitrt_dl_handle) {
     fprintf(stderr, "kitcuda: warning - avoiding reloading of symbols...\n");
     return true;
   }
 
-  // TODO: Should we make this a bit more flexible or simply assume
-  // adequate setup via environment variables?  For now we've taken
-  // the path of a hard error if we can't open the CUDA library. 
+  // TODO: Should we make this a bit more flexible or simply assume adequate
+  // setup via environment variables?  For now we've taken the path of a hard
+  // error if we can't open the CUDA library.
   kitrt_dl_handle = dlopen(CUDA_DSO_LIBNAME, RTLD_LAZY);
   if (kitrt_dl_handle == NULL) {
     fprintf(stderr, "kitcuda: unable to open '%s'!\n", CUDA_DSO_LIBNAME);
     fprintf(stderr, "  -- Make sure it can be found in your "
                     "shared library path.\n");
-    return false;  // this will force an abort() during runtime intialization
+    return false; // this will force an abort() during runtime intialization
   }
 
   if (__kitrt_verbose_mode()) {
@@ -98,9 +98,9 @@ bool __kitcuda_load_symbols() {
     }
   }
 
-  // NOTE: Try to keep the ordering and grouping here sync'ed 
-  // with kitcuda_dylib.h.  It makes life a bit easier when
-  // adding/removing entry points.
+  // NOTE: Try to keep the ordering and grouping here sync'ed with
+  // kitcuda_dylib.h.  It makes life a bit easier when adding/removing entry
+  // points.
 
   /* Initialization and query related entry points */
   DLSYM_LOAD(cuInit);
@@ -159,7 +159,7 @@ bool __kitcuda_load_symbols() {
   DLSYM_LOAD(cuGetErrorName);
   DLSYM_LOAD(cuGetErrorString);
 
-  
   KIT_NVTX_POP();
+
   return true;
 }

@@ -19,6 +19,6 @@
 // CHECK-CUSTOM-SAME: "-Wsome_compiler_flag"
 // CHECK-CUSTOM: {{^[ ]*"[^"]+/[l]?}}ld{{[.]?[^ ]*}}"
 // CHECK-CUSTOM-SAME: "-some_linker_flag"
+// CHECK-CUSTOM-SAME: -lkitrt
 // CHECK-CUSTOM-SAME: -lcudart
 // CHECK-CUSTOM-SAME: -lcuda
-// CHECK-CUSTOM-SAME: -lkitrt

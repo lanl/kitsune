@@ -1636,6 +1636,8 @@ std::unique_ptr<Module> &HipABI::getLibDeviceModule() {
 
     LLVM_DEBUG(dbgs() << "\tpre-loading AMDGCN device bitcode files.\n");
     for (std::string BCFile : ROCmBCFiles) {
+      // FIXME: Do not use string append. Prefer to use llvm::path here which
+      // can handle trailing (back)slashes, or add them when necessary.
       const std::string GCNFile = std::string(KITSUNE_HIP_BITCODE_DIR) + BCFile;
       LLVM_DEBUG(dbgs() << "\t\t* " << GCNFile << "\n");
       if (LibDeviceModule == nullptr) {
@@ -1882,8 +1884,10 @@ HipABIOutputFile HipABI::linkTargetObj(const HipABIOutputFile &ObjFile,
   }
   LinkedObjFile->keep();
 
+  // FIXME: Since LLD is required, the project should be enabled by default
+  // when building Kitsune and the binary added to the Kitsune configuration.
   // TODO: The lld invocation below is unix-specific...
-  auto LLD = sys::findProgramByName("/projects/kitsune/x86_64/18.x/bin/lld");
+  auto LLD = sys::findProgramByName("lld");
   if ((EC = LLD.getError()))
     report_fatal_error("executable 'lld' not found! "
                        "check your path?");
@@ -1951,7 +1955,8 @@ HipABIOutputFile HipABI::createBundleFile() {
   // Run the AMDGPU target to create the associated object file for the
   // kernel module.
   std::string ModelBundleFileName =
-      HIPABI_PREFIX + "%%-%%-%%_" + KernelModule.getName().str();
+      HIPABI_PREFIX + "%%-%%-%%_" +
+      sys::path::filename(KernelModule.getName()).str();
   SmallString<1024> BundleFileName;
   sys::fs::createUniquePath(ModelBundleFileName.c_str(), BundleFileName, true);
   sys::path::replace_extension(BundleFileName, ".amdgpu.o");

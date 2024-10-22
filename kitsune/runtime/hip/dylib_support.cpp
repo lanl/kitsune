@@ -50,27 +50,30 @@
  *===----------------------------------------------------------------------===
  */
 #include <cstdio>
+
+// TODO: We should determine why we need to disable "extern" on decl's in
+// certain cases. There may be a better way of doing this.
 #define __KITRT_DISABLE_EXTERN_DECLS__
 #include "kithip.h"
 #include "kithip_dylib.h"
+#undef __KITRT_DISABLE_EXTERN_DECLS__
 
 // TODO: Any reason to provide this via an environment variable?
 static const char *HIP_DSO_LIBNAME = "libamdhip64.so";
 
 bool __kithip_load_symbols() {
-
-  // NOTE: The handle variable below is named to support use of 
-  // macros for each load call below -- changing the name will 
-  // break things...  TODO: we should probably fix this... 
+  // NOTE: The handle variable below is named to support use of  macros for each
+  // load call below -- changing the name will break things...  TODO: we should
+  // probably fix this...
   static void *kitrt_dl_handle = nullptr;
   if (kitrt_dl_handle) {
     fprintf(stderr, "kithip: warning - avoiding reloading of symbols...\n");
     return true;
   }
 
-  // TODO: Should we make this a bit more flexible or simply assume
-  // adequate setup via environment variables?  For now we've taken
-  // the path of a hard error if we can't open the HIP library.
+  // TODO: Should we make this a bit more flexible or simply assume adequate
+  // setup via environment variables?  For now we've taken the path of a hard
+  // error if we can't open the HIP library.
   kitrt_dl_handle = dlopen(HIP_DSO_LIBNAME, RTLD_LAZY);
   if (kitrt_dl_handle == NULL) {
     fprintf(stderr, "kithip: unable to open '%s'!\n", HIP_DSO_LIBNAME);
@@ -79,9 +82,9 @@ bool __kithip_load_symbols() {
     return false; // this will force an abort() during runtime intialization
   }
 
-  // NOTE: Try to keep the ordering and grouping here sync'ed
-  // with kithip_dylib.h.  It makes life a bit easier when
-  // adding/removing entry points.
+  // NOTE: Try to keep the ordering and grouping here sync'ed with
+  // kithip_dylib.h.  It makes life a bit easier when adding/removing entry
+  // points.
 
   /* Initialization and query related entry points */
   DLSYM_LOAD(hipInit);
@@ -121,9 +124,9 @@ bool __kithip_load_symbols() {
   DLSYM_LOAD(hipMemsetD8Async);
   DLSYM_LOAD(hipMemPrefetchAsync);
 
-
   /* Error handling */
   DLSYM_LOAD(hipGetErrorName);
   DLSYM_LOAD(hipGetErrorString);
+
   return true;
 }

@@ -1768,18 +1768,10 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
       break;
 
     case llvm::TapirTargetID::Cuda:
-      CmdArgs.push_back(
-          Args.MakeArgString(StringRef("-L") + KITSUNE_CUDA_LIBRARY_DIR));
-      CmdArgs.push_back(
-          Args.MakeArgString(StringRef("-L") + KITSUNE_CUDA_STUBS_DIR));
-      ExtractArgsFromString("-lcudart -lcuda", CmdArgs, Args);
       ExtractArgsFromString(KITSUNE_CUDA_EXTRA_LINKER_FLAGS, CmdArgs, Args);
       break;
 
     case llvm::TapirTargetID::Hip:
-      CmdArgs.push_back(
-          Args.MakeArgString(StringRef("-L") + KITSUNE_HIP_LIBRARY_DIR));
-      ExtractArgsFromString("-lamdhip64", CmdArgs, Args);
       ExtractArgsFromString(KITSUNE_HIP_EXTRA_LINKER_FLAGS, CmdArgs, Args);
       break;
 
@@ -1834,24 +1826,59 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
   }
 
   if (IsKokkos) {
-    std::string LibDir = concat(D.ResourceDir, "lib64");
-    CmdArgs.push_back(Args.MakeArgString(StringRef("-L") + LibDir));
-    CmdArgs.push_back(Args.MakeArgString("-rpath"));
-    CmdArgs.push_back(Args.MakeArgString(LibDir));
-    CmdArgs.push_back(Args.MakeArgString("-lkokkoscore"));
+    const char* LibDir = Args.MakeArgString(concat(D.ResourceDir, "lib64"));
+    CmdArgs.push_back("-L");
+    CmdArgs.push_back(LibDir);
+    CmdArgs.push_back("-rpath");
+    CmdArgs.push_back(LibDir);
+    CmdArgs.push_back("-lkokkoscore");
     ExtractArgsFromString(KITSUNE_KOKKOS_EXTRA_LINKER_FLAGS, CmdArgs, Args);
   }
 
-  // The pthread functions are now part of libc and was removed from glibc 2.34.
-  // There is no need to explicitly link this in unless we have older versions
-  // of libc around. We should consider removing this from here at some point
-  // when we are certain we don't need this any longer.
+  // We always link in libkitrt if a TapirTarget or special Kokkos handling has
+  // been specified.
   if (TapirTarget or IsKokkos) {
-    std::string LibDir = concat(D.ResourceDir, "lib");
-    CmdArgs.push_back(Args.MakeArgString(StringRef("-L") + LibDir));
-    CmdArgs.push_back(Args.MakeArgString("-rpath"));
-    CmdArgs.push_back(Args.MakeArgString(LibDir));
-    ExtractArgsFromString("-lkitrt -lpthread -ldl", CmdArgs, Args);
+    // The pthread functions are now part of libc and was removed from glibc
+    // 2.34. There is no need to explicitly link this in unless we have older
+    // versions of libc around. We should consider removing this from here at
+    // some point when we are certain we don't need this any longer.
+    CmdArgs.push_back("-lpthread");
+
+    // It is not clear if we need dl here since that will already have been
+    // linked in libkitrt.
+    CmdArgs.push_back("-ldl");
+
+    const char* LibDir = Args.MakeArgString(concat(D.ResourceDir, "lib"));
+    CmdArgs.push_back("-L");
+    CmdArgs.push_back(LibDir);
+    CmdArgs.push_back("-rpath");
+    CmdArgs.push_back(LibDir);
+
+    CmdArgs.push_back("-lkitrt");
+
+    if (KITSUNE_HIP_ENABLED) {
+      CmdArgs.push_back("-L");
+      CmdArgs.push_back(KITSUNE_HIP_LIBRARY_DIR);
+      CmdArgs.push_back("-rpath");
+      CmdArgs.push_back(KITSUNE_HIP_LIBRARY_DIR);
+
+      CmdArgs.push_back("-lamdhip64");
+    }
+
+    // libkitrt links against libcuda if the cuda target is enabled and
+    // libamdhip64 if the hip target is enabled. The libraries may not be where
+    // the dynamic linker will find them, so the paths need to be set correctly
+    // here if libkitrt.so will be linked, regardless of the Tapir target being
+    // used.
+    if (KITSUNE_CUDA_ENABLED) {
+      CmdArgs.push_back("-L");
+      CmdArgs.push_back(KITSUNE_CUDA_LIBRARY_DIR);
+      CmdArgs.push_back("-rpath");
+      CmdArgs.push_back(KITSUNE_CUDA_LIBRARY_DIR);
+
+      CmdArgs.push_back("-lcudart");
+      CmdArgs.push_back("-lcuda");
+    }
   }
 }
 

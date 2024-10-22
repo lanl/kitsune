@@ -7,5 +7,5 @@
 // by the absolute path to the linker in quotes. The linker name itself could
 // be lld, but we also allow matches to ld.gold, ld.bfd etc.
 // CHECK: {{^[ ]*"[^"]+/[l]?}}ld{{[.]?[^ ]*}}"
-// CHECK-SAME: -lamdhip64
 // CHECK-SAME: -lkitrt
+// CHECK-SAME: -lamdhip64

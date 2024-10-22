@@ -63,15 +63,6 @@ target_include_directories(${KITRT}
   ${KITSUNE_SOURCE_DIR}/include
   ${KITSUNE_RUNTIME_INCLUDE_DIR})
 
-#
-# KITSUNE FIXME: Do we need the RPATH's that are set below?
-#
-# set_property(TARGET ${KITRT} APPEND PROPERTY
-#   INSTALL_RPATH "$ORIGIN/../lib${LLVM_LIBDIR_SUFFIX}")
-
-# set_property(TARGET ${KITRT} APPEND PROPERTY
-#   BUILD_RPATH "$ORIGIN/../lib${LLVM_LIBDIR_SUFFIX}:${PROJECT_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}")
-
 find_library(LIB_LLVM
   NAMES LLVM
   LLVM-${LLVM_VERSION_MAJOR}
@@ -110,19 +101,12 @@ if (KITSUNE_CUDA_ENABLE)
   target_include_directories(${KITRT} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cuda)
 
   target_link_directories(${KITRT} PUBLIC
-    ${KITSUNE_CUDA_LIBRARY_DIR}
-    ${KITSUNE_CUDA_STUBS_DIR})
+    ${KITSUNE_CUDA_LIBRARY_DIR})
 
   target_link_libraries(${KITRT} PUBLIC
     ${KITSUNE_CUDA_LIB_NVPTX_STATIC}
     ${KITSUNE_CUDA_LIB_CUDART}
     ${KITSUNE_CUDA_LIB_CUDA})
-
-  set_property(TARGET ${KITRT} APPEND PROPERTY
-    INSTALL_RPATH ${KITSUNE_CUDA_LIBRARY_DIR})
-
-  set_property(TARGET ${KITRT} APPEND PROPERTY
-    BUILD_RPATH ${KITSUNE_CUDA_LIBRARY_DIR})
 
   if (KITCUDA_ENABLE_NVTX)
     target_compile_definitions(${KITRT} PUBLIC KITCUDA_ENABLE_NVTX)
@@ -147,22 +131,6 @@ endif()
 # Unfortunately, these details seem to be a moving target with ecah release
 # of rocm/hip...
 if (KITSUNE_HIP_ENABLE)
-
-  if (NOT DEFINED ROCM_PATH)
-    message(STATUS "Kitsune HIP support enabled but ROCM_PATH not set.")
-    if (DEFINED $ENV{ROCM_PATH})
-      message(STATUS "  using ROCM_PATH environment variable.")
-      set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "AMD ROCM/HIP installation directory.")
-    else()
-      message(STATUS "  selecting a common default install location.")
-      set(ROCM_PATH "/opt/rocm" CACHE PATH "AMD ROCM/HIP installation directory.")
-    endif()
-  endif()
-  list(APPEND CMAKE_MODULE_PATH "${ROCM_PATH}/lib/cmake/hip")
-
-  find_package(HIP REQUIRED)
-  include("${ROCM_PATH}/lib/cmake/hip/hip-config.cmake")
-
   list(APPEND KITRT_HDRS
     hip/kithip.h
     hip/kithip_dylib.h)
@@ -174,31 +142,25 @@ if (KITSUNE_HIP_ENABLE)
     hip/memory.cpp
     hip/streams.cpp)
 
-  message(STATUS "hip include dir: ${hip_INCLUDE_DIR}")
-  message(STATUS "hip library dir: ${hip_LIB_INSTALL_DIR}")
-
   target_compile_definitions(${KITRT} PUBLIC KITRT_HIP_ENABLED)
   target_compile_definitions(${KITRT} PUBLIC __HIP_PLATFORM_AMD__)
-  target_include_directories(${KITRT} PUBLIC ${hip_INCLUDE_DIR})
-  target_link_directories(${KITRT} PUBLIC ${HIP_LIB_INSTALL_DIR})
-  target_link_libraries(${KITRT} PUBLIC amdhip64)
-
-  set_property(TARGET ${KITRT} APPEND PROPERTY
-    INSTALL_RPATH ${HIP_LIB_INSTALL_DIR})
-  set_property(TARGET ${KITRT} APPEND PROPERTY
-    BUILD_RPATH ${HIP_LIB_INSTALL_DIR})
+  target_include_directories(${KITRT} PUBLIC ${KITSUNE_HIP_INCLUDE_DIR})
+  target_link_directories(${KITRT} PUBLIC ${KITSUNE_HIP_LIBRARY_DIR})
+  target_link_libraries(${KITRT} PUBLIC ${KITSUNE_HIP_LIB_AMDHIP64})
 endif()
 
 # ${KITRT_INSTALL_PREFIX} will be set to ${CMAKE_INSTALL_PREFIX} for the broader
 # LLVM project that is being built. On the other hand, ${CMAKE_INSTALL_PREFIX}
 # will be set to some directory within the build directory into which this is
-# "installed" at build time (all this because libkitrt is treated as an
-# "external project". There is probably a better way of handling all this, but
-# this is what we are doing for now).
-set_target_properties(${KITRT} PROPERTIES
-  INSTALL_RPATH ${KITRT_INSTALL_PREFIX}/lib)
+# "installed" at build time (this is because libkitrt is treated as an
+# "external project". There is probably a better way of handling all this).
+# This
+set_property(TARGET ${KITRT} APPEND PROPERTY
+  INSTALL_RPATH "$ORIGIN/../../../")
+set_property(TARGET ${KITRT} APPEND PROPERTY
+  BUILD_RPATH "$ORIGIN/../../../")
 
-install(TARGETS kitrt
+install(TARGETS ${KITRT}
   DESTINATION ${CLANG_RESOURCE_SUBDIR}/lib)
 
 # KITSUNE FIXME: Do we really need to install the runtime headers? Do we intend

@@ -1,4 +1,4 @@
-// RUN: %kitxx -Xclang -verify -fsyntax-only -fkokkos -fkokkos-no-init -ftapir=cuda %s
+// RUN: %kitxx -Xclang -verify -fsyntax-only -fkokkos -fkokkos-no-init -ftapir=serial %s
 
 #include "Kokkos_Core.hpp"
 #include <kitsune.h>
@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
 	A[i] = i;
     });
 
-    [[tapir::target(cuda)]] // expected-error {{'target' attribute requires a string}}
+    [[tapir::target(serial)]] // expected-error {{'target' attribute requires a string}}
     Kokkos::parallel_for(1024, KOKKOS_LAMBDA(const int i) {
 	A[i] = i;
     });
@@ -23,12 +23,12 @@ int main(int argc, char *argv[]) {
 	A[i] = i;
     });
 
-    [[tapir::target("cuda","-03")]] // expected-error {{'target' attribute takes one argument}}
+    [[tapir::target("serial","-03")]] // expected-error {{'target' attribute takes one argument}}
     Kokkos::parallel_for(1024, KOKKOS_LAMBDA(const int i) {
       A[i] = i;
     });
 
-    [[tapir::target("cuda")]] // expected-error {{tapir target attribute on unsupported statement}}
+    [[tapir::target("serial")]] // expected-error {{tapir target attribute on unsupported statement}}
     if (argc == 1) {
       forall(int i = 0; i < 1024; ++i)
 	Kokkos::parallel_for(1024, KOKKOS_LAMBDA(const int i) {

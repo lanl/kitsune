@@ -4492,27 +4492,27 @@ bool CompilerInvocation::ParseKitsuneArgs(KitsuneOptions &Opts, ArgList &Args,
       // The serial and none targets are always built.
       break;
     case llvm::TapirTargetID::Cuda:
-      if (!KITSUNE_CUDA_ENABLE)
+      if (!KITSUNE_CUDA_ENABLED)
         Diags.Report(diag::err_drv_kitsune_cuda_target_disabled);
       break;
     case llvm::TapirTargetID::Hip:
-      if (!KITSUNE_HIP_ENABLE)
+      if (!KITSUNE_HIP_ENABLED)
         Diags.Report(diag::err_drv_kitsune_hip_target_disabled);
       break;
     case llvm::TapirTargetID::OpenCilk:
-      if (!KITSUNE_OPENCILK_ENABLE)
+      if (!KITSUNE_OPENCILK_ENABLED)
         Diags.Report(diag::err_drv_kitsune_opencilk_target_disabled);
       break;
     case llvm::TapirTargetID::OpenMP:
-      if (!KITSUNE_OPENMP_ENABLE)
+      if (!KITSUNE_OPENMP_ENABLED)
         Diags.Report(diag::err_drv_kitsune_openmp_target_disabled);
       break;
     case llvm::TapirTargetID::Qthreads:
-      if (!KITSUNE_QTHREADS_ENABLE)
+      if (!KITSUNE_QTHREADS_ENABLED)
         Diags.Report(diag::err_drv_kitsune_qthreads_target_disabled);
       break;
     case llvm::TapirTargetID::Realm:
-      if (!KITSUNE_REALM_ENABLE)
+      if (!KITSUNE_REALM_ENABLED)
         Diags.Report(diag::err_drv_kitsune_realm_target_disabled);
       break;
     default:
