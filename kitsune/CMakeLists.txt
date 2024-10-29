@@ -356,6 +356,10 @@ if (KITSUNE_OPENCILK_ENABLE)
     ${KITSUNE_OPENCILK_BUILD_CONFIGURE_FLAGS}
   )
 
+  # This temporarily uses a patched version of Cheetah to workaround a bug where
+  # certain Cilk types are not emitted to libopencilk-abi.bc. When upstream
+  # fixes the issue, this should be changed to point to the official cheetah
+  # repository.
   ExternalProject_Add(cheetah
     DEPENDS        clang lld llvm-config llvm-link
     GIT_REPOSITORY https://github.com/tarunprabhu/cheetah.git
