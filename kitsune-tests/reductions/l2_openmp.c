@@ -2,18 +2,13 @@
 #include<math.h>
 #include<stdio.h>
 #include<stdlib.h>
-#include<kitsune.h>
 #include<gpu.h>
-
-reduction
-void sum(double *a, double b){
-  *a += b;
-}
 
 double l2(uint64_t n, double* a){
   double red = 0; 
-  forall(uint64_t i=0; i<n; i++){
-    sum(&red, a[i]*a[i]); 
+  #pragma omp parallel for reduction(+:red)
+  for(uint64_t i=0; i<n; i++){
+    red += a[i]*a[i]; 
   }
 
   return sqrt(red);
@@ -22,7 +17,7 @@ double l2(uint64_t n, double* a){
 double l2_seq(uint64_t n, double* a){
   double red = 0; 
   for(uint64_t i=0; i < n; i++){
-    sum(&red, a[i]*a[i]); 
+    red += a[i]*a[i]; 
   }
   return sqrt(red);
 }
@@ -31,9 +26,10 @@ int main(int argc, char** argv){
   int e = argc > 1 ? atoi(argv[1]) : 28; 
   int niter = argc > 2 ? atoi(argv[2]) : 100; 
   uint64_t n = 1ULL<<e; 
-  double* arr = (double*)gpuManagedMalloc(sizeof(double) * n); 
+  double* arr = malloc(sizeof(double) * n); 
 
-  forall(uint64_t i=0; i<n; i++){
+  #pragma omp parallel for
+  for(uint64_t i=0; i<n; i++){
     arr[i] = i; 
   }
 
