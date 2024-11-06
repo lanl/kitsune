@@ -449,6 +449,9 @@ public:
   virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap)
   { /* no-op */ }
 
+  virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, ValueSet &LoopInputs)
+  { preProcessTapirLoop(TL, VMap); }
+
   /// Processes an outlined Function Helper for a Tapir loop, just after the
   /// function has been outlined.
   virtual void postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,

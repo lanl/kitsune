@@ -67,6 +67,8 @@ private:
   FunctionCallee GPUInit = nullptr;
   FunctionCallee GPULaunchKernel = nullptr;
   FunctionCallee GPUWaitKernel = nullptr;
+  FunctionCallee GPUManagedMalloc = nullptr; 
+  FunctionCallee GPUGridSize = nullptr; 
 
   SmallVector<Value *, 5> OrderedInputs; 
 public:
@@ -86,8 +88,9 @@ public:
                           ValueToValueMapTy &VMap) override final;
   void processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                DominatorTree &DT) override final;
+  void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, ValueSet& LoopInputs) override final;
 };
-}
+} //namespace llvm
 
 #endif
 /*

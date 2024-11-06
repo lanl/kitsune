@@ -1,4 +1,4 @@
-all: l2 l2_gpu l2_serial l2_openmp
+all: l2_gpu l2 l2_serial l2_openmp
 
 l2.ll : l2.c
 	clang -S -emit-llvm l2.c -O1 -ftapir=none 
@@ -12,8 +12,8 @@ l2_stripmined_opt.ll: l2_stripmined.ll
 l2: l2_stripmined_opt.ll
 	clang -ftapir=opencilk -O2 l2_stripmined_opt.ll -o l2 -lm  -lllvm-gpu
 
-l2_gpu.ll: l2_stripmined_opt.ll
-	clang -ftapir=gpu -O1 -S -emit-llvm $< -o $@ 
+l2_gpu.ll: l2.ll
+	clang -ftapir=gpu -O1 -S -emit-llvm $< -o $@  -mllvm -debug-only=gpuabi
 
 l2_gpu: l2_gpu.ll
 	clang l2_gpu.ll -fPIC -o l2_gpu -ftapir=gpu -lm -lllvm-gpu

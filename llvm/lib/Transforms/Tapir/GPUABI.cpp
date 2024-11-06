@@ -45,8 +45,10 @@ static cl::opt<bool>
           "(default=false)"));
 
 Value *GPUABI::lowerGrainsizeCall(CallInst *GrainsizeCall) {
-  Value *Grainsize = ConstantInt::get(GrainsizeCall->getType(), 8);
-
+  //Value *Grainsize = ConstantInt::get(GrainsizeCall->getType(), 8);
+  Module *M = GrainsizeCall->getModule(); 
+  Type *Int64Ty = Type::getInt64Ty(M->getContext());
+  Value* Grainsize = CallInst::Create(M->getOrInsertFunction("gpuGridSize", Int64Ty), {},  GrainsizeCall); 
   // Replace uses of grainsize intrinsic call with this grainsize value.
   GrainsizeCall->replaceAllUsesWith(Grainsize);
   return Grainsize;
@@ -116,6 +118,8 @@ LLVMLoop::LLVMLoop(Module &M)
   GPUInit = M.getOrInsertFunction("initRuntime", VoidTy);
   GPULaunchKernel = M.getOrInsertFunction("launchBCKernel", VoidPtrTy, VoidPtrTy, Int64Ty, VoidPtrPtrTy, Int64Ty);
   GPUWaitKernel = M.getOrInsertFunction("waitKernel", VoidTy, VoidPtrTy);
+  GPUManagedMalloc = M.getOrInsertFunction("gpuManagedMalloc", VoidPtrTy, Int64Ty);  
+  GPUGridSize = M.getOrInsertFunction("gpuGridSize", Int64Ty);  
 }
 
 void LLVMLoop::setupLoopOutlineArgs(
@@ -196,6 +200,7 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   BasicBlock *Header = cast<BasicBlock>(VMap[L->getHeader()]);
   BasicBlock *Exit = cast<BasicBlock>(VMap[TL.getExitBlock()]);
   PHINode *PrimaryIV = cast<PHINode>(VMap[TL.getPrimaryInduction().first]);
+  InductionDescriptor ID = TL.getPrimaryInduction().second; 
   Value *PrimaryIVInput = PrimaryIV->getIncomingValueForBlock(Entry);
   Instruction *ClonedSyncReg = cast<Instruction>(
       VMap[T->getDetach()->getSyncRegion()]);
@@ -253,14 +258,22 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   ClonedCond->setOperand(TripCountIdx, End);
   assert(ClonedCond->getOperand(TripCountIdx) == End &&
          "End argument not used in condition");
-
+  // we replace the step
+  assert(TL.getPrimaryInduction().second.getInductionBinOp()->getOpcode() == Instruction::BinaryOps::Add &&
+        "Only support gpu kernels with addition for induction step"); 
+  ConstantInt *CStep = cast<ConstantInt>(VMap[ID.getConstIntStepValue()]);  
+  BinaryOperator *BinOp = cast<BinaryOperator>(VMap[ID.getInductionBinOp()]); 
+  assert(CStep && BinOp && "Couldn't infer step or operator from primary induction gpu variable"); 
+  IRBuilder<> IncB(&BinOp->getParent()->front());  
+  Value* NewStep = IncB.CreateMul(CStep, Grainsize); 
+  BinOp->setOperand(1, NewStep); 
+  ClonedCond->setPredicate(ICmpInst::Predicate::ICMP_UGE); 
 }
 
 void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                       DominatorTree &DT) {
   LLVMContext &Ctx = M.getContext();
   Type *Int8Ty = Type::getInt8Ty(Ctx);
-  Type *Int32Ty = Type::getInt32Ty(Ctx);
   Type *Int64Ty = Type::getInt64Ty(Ctx);
   Type *VoidPtrTy = Type::getInt8PtrTy(Ctx);
 
@@ -273,12 +286,7 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
 
   IRBuilder<> B(&NBB->front());
 
-  // Compile the kernel
-  //LLVMM.getFunctionList().remove(TOI.Outline);
-  //TOI.Outline->eraseFromParent();
-  LLVMContext &LLVMCtx = LLVMM.getContext();
-
-  ValueToValueMapTy VMap;
+  ValueToValueMapTy VMap; 
   // We recursively add definitions and declarations to the device module
   SmallVector<Function*> todo;
   todo.push_back(LLVMM.getFunction("kitsune_kernel"));
@@ -390,14 +398,10 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                  GlobalValue::PrivateLinkage, LLVMBC,
                                  "gpu_" + Twine("kitsune_kernel"));
 
-  Value *KernelID = ConstantInt::get(Int32Ty, MyKernelID);
-  Value *LLVMPtr = B.CreateBitCast(LLVMGlobal, VoidPtrTy);
-  Type *VoidPtrPtrTy = VoidPtrTy->getPointerTo();
-
-  Constant *kernelSize = ConstantInt::get(Int64Ty,
-    LLVMGlobal->getInitializer()->getType()->getArrayNumElements());
-  BasicBlock &EBB = Parent->getEntryBlock();
-  IRBuilder<> EB(&EBB.front());
+  Constant *kernelSize = ConstantInt::get(Int64Ty, 
+    LLVMGlobal->getInitializer()->getType()->getArrayNumElements()); 
+  BasicBlock &EBB = Parent->getEntryBlock(); 
+  IRBuilder<> EB(&EBB.front()); 
   EB.CreateCall(GPUInit, {});
 
   ArrayType* arrayType = ArrayType::get(VoidPtrTy, OrderedInputs.size());
@@ -421,4 +425,103 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
 }
 
-#endif
+void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, ValueSet &LoopInputs) {
+  Loop *L = TL.getLoop();  
+  BasicBlock *PH = L->getLoopPreheader(); 
+  BasicBlock *Header = L->getHeader();
+  BasicBlock *Latch = L->getLoopLatch();
+  BranchInst *LatchBR = cast<BranchInst>(Latch->getTerminator());
+  unsigned ExitIndex = LatchBR->getSuccessor(0) == Header ? 1 : 0;
+  BasicBlock *LatchExit = LatchBR->getSuccessor(ExitIndex);
+  DetachInst *DI = cast<DetachInst>(Header->getTerminator());
+  Value *SyncReg = DI->getSyncRegion();
+  Value *GS; 
+
+  const DataLayout &DL = L->getHeader()->getModule()->getDataLayout();
+
+  // accumulate Reductions in main loop
+  const std::vector<BasicBlock*>& Blocks = L->getBlocks(); 
+  std::set<std::pair<CallInst*, Type*>> Reductions;
+  for (BasicBlock *BB : Blocks){
+    for (Instruction &I : *BB) {
+      if(auto *CI = dyn_cast<CallInst>(&I)){
+        auto *F = CI->getCalledFunction(); 
+        if(F->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+          LLVM_DEBUG(dbgs() << "Found reduction var: " << CI->getArgOperand(0)->getName() << 
+                               "with reduction function: " << F->getName() << "\n"); 
+          auto *Ty = CI->getArgOperand(1)->getType(); 
+          Reductions.insert(std::make_pair(CI, Ty)); 
+          //TODO: check the type to confirm valid reduction
+        }
+      }
+    }
+  }
+
+  std::vector<std::tuple<CallInst*, Value* , Value*, Type*>> RedMap; 
+
+  for(auto &Red : Reductions){
+    // We assume there's a preheader, and use it to insert allocations for reductions:
+    // preheader: 
+    //   gs = gridSize()
+    //   reds = gpuManagedMalloc(gs)
+    //   br header
+    IRBuilder<> RB(&PH->front()); 
+    CallInst *CI = Red.first; 
+    Value *Ptr = CI->getArgOperand(0); 
+    Type *Ty = Red.second; 
+    GS = RB.CreateCall(GPUGridSize); 
+    Value *NBytes = RB.CreateMul(GS, ConstantInt::get(GS->getType(), DL.getTypeAllocSize(Ty))); 
+    CallInst *Alloc = RB.CreateCall(GPUManagedMalloc, {NBytes}); 
+    LoopInputs.insert(Alloc); 
+    // We overwrite in the body the location to Alloc, which will be replaced with a GEP using the tid in postprocessing
+    CI->setOperand(0, Alloc); 
+
+    RedMap.push_back(std::make_tuple(CI, Ptr, Alloc, Ty)); 
+  }
+
+  if(!Reductions.empty()){
+    Instruction* Term = LatchExit->getTerminator(); 
+    BasicBlock *PostSync = Term->getSuccessor(0);
+    BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
+    RedEpiHeader->moveAfter(LatchExit); 
+    ReplaceInstWithInst(Term, SyncInst::Create(RedEpiHeader, SyncReg)); 
+    BranchInst::Create(PostSync, RedEpiHeader);
+    PHINode *Idx = PHINode::Create(GS->getType(), 2,
+                                   "reductionepilogueidx",
+                                   RedEpiHeader->getFirstNonPHI());
+    IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
+    Idx->addIncoming(ConstantInt::get(GS->getType(), 0), LatchExit);
+    Instruction *BodyTerm, *ExitTerm;
+    Value *Cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, GS); 
+    SplitBlockAndInsertIfThenElse(Cmp, RedEpiHeader->getTerminator(), &BodyTerm, &ExitTerm);
+
+    IRBuilder<> BB(BodyTerm); 
+    // For each reduction, get the allocated thread local reduced values and
+    // reduce them. 
+    for(auto& KV : RedMap){
+      const auto [ CI, Ptr, Al, Ty ] = KV; 
+      Value* Lptr = BB.CreateBitCast(
+        BB.CreateGEP(Ty, Al, Idx), 
+        Ptr->getType());                             
+      Value *LR = BB.CreateLoad(Ty, Lptr); 
+      BB.SetCurrentDebugLocation(CI->getDebugLoc()); 
+      BB.CreateCall(CI->getCalledFunction(), { Ptr, LR }); 
+    }
+    Value *IdxAdd =
+        BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
+                          Idx->getName() + ".add");
+    BasicBlock* Body = BodyTerm->getParent(); 
+    BasicBlock* LoopExit = ExitTerm->getParent(); 
+    Idx->addIncoming(IdxAdd, Body); 
+    ReplaceInstWithInst(BodyTerm, BranchInst::Create(RedEpiHeader)); 
+
+    // Update Loopinfo with reduction loop
+    //Loop* RL = LI->AllocateLoop(); 
+    //if(ParentLoop) ParentLoop->addChildLoop(RL); 
+    //else LI->addTopLevelLoop(RL); 
+    //RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
+    //RL->addBasicBlockToLoop(body, *LI); 
+  }
+  
+  LLVM_DEBUG(dbgs() << "Finished preProcessTapirLoop: " << *PH->getParent());
+}
