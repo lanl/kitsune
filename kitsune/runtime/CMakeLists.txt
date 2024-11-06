@@ -84,7 +84,7 @@ target_link_libraries(${KITRT}
 # The KITSUNE_CUDA_* variables are defined in ../CMakeLists.txt (i.e. in
 # kitsune/CMakeLists.txt). They are passed in via CMake because the Kitsune
 # runtime is treated as an "ExternalProject".
-if (KITSUNE_CUDA_ENABLE)
+if (KITSUNE_CUDA_ENABLED)
   list(APPEND KITRT_HDRS
     cuda/kitcuda.h
     cuda/kitcuda_dylib.h)
@@ -130,7 +130,7 @@ endif()
 # targets are actually intended for the language and not runtime libraries.
 # Unfortunately, these details seem to be a moving target with ecah release
 # of rocm/hip...
-if (KITSUNE_HIP_ENABLE)
+if (KITSUNE_HIP_ENABLED)
   list(APPEND KITRT_HDRS
     hip/kithip.h
     hip/kithip_dylib.h)

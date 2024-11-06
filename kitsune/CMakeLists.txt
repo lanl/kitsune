@@ -24,16 +24,15 @@ option(KITSUNE_INCLUDE_TESTS
   "Generate build targets for the Kitsune tests"
   ${LLVM_INCLUDE_TESTS})
 
+# FIXME: Ideally, this should be KITSUNE_KOKKOS_ENABLED (with a D at the end) to
+# be consistent with all the other uses, but leaving it as it is for now because
+# there may be folks who are still building it with this. Once we know that no
+# one is still using this, it will be removed in favor of ENABLED.
 option(KITSUNE_KOKKOS_ENABLE
   "Enable custom recognition and compilation of Kokkos"
   ON)
 
-set(KITSUNE_CUDA_ENABLE OFF CACHE INTERNAL "Enable the cuda tapir target" FORCE)
-set(KITSUNE_HIP_ENABLE OFF CACHE INTERNAL "Enable the hip tapir target" FORCE)
-set(KITSUNE_OPENCILK_ENABLE OFF CACHE INTERNAL "Enable the opencilk tapir target" FORCE)
-set(KITSUNE_OPENMP_ENABLE OFF CACHE INTERNAL "Enable the openmp tapir target" FORCE)
-set(KITSUNE_QTHREADS_ENABLE OFF CACHE INTERNAL "Enable the qthreads tapir target" FORCE)
-set(KITSUNE_REALM_ENABLE OFF CACHE INTERNAL "Enable the realm tapir target" FORCE)
+set(KITSUNE_KOKKOS_ENABLED ${KITSUNE_KOKKOS_ENABLE} "Enable Kokkos recognition" FORCE)
 
 # TODO: The _MAX variables are not currently used but it would be good to
 # require a range instead of just a minimum. In practice, we may want to
@@ -49,38 +48,6 @@ set(KITSUNE_INCLUDE_DIR ${KITSUNE_SOURCE_DIR}/include)
 set(KITSUNE_BINARY_DIR  ${PROJECT_BINARY_DIR})
 set(KITSUNE_TARGETS_BINARY_DIR ${KITSUNE_BINARY_DIR}/targets)
 
-# TODO: Need to update the openmp, qthreads and realm targets and add them
-# back into this list. These targets have not been tested in a while and have
-# probably bit-rotted. Enabling them will raise a configure-time error.
-set(KITSUNE_ALL_TAPIR_TARGETS
-  "cuda;hip;opencilk"
-  CACHE STRING
-  "All known Tapir targets.")
-
-set(KITSUNE_DEFAULT_TAPIR_TARGETS
-  "cuda;hip;opencilk"
-  CACHE STRING
-  "The Tapir targets that are built by default if targets are not explicitly specified.")
-
-set(KITSUNE_ENABLE_TAPIR_TARGETS
-  "${KITSUNE_DEFAULT_TAPIR_TARGETS}"
-  CACHE STRING
-  "Semicolon-separated list of runtime targets to build (or \"all\".)")
-
-if (NOT KITSUNE_ENABLE_TAPIR_TARGETS)
-  message(FATAL_ERROR "At least one runtime target must be built")
-endif ()
-
-foreach(target IN LISTS KITSUNE_ENABLE_TAPIR_TARGETS)
-  if (target IN_LIST KITSUNE_ALL_TAPIR_TARGETS)
-    message(STATUS "${target} tapir target enabled")
-    string(TOUPPER "${target}" upper_target)
-    set(KITSUNE_${upper_target}_ENABLE ON CACHE INTERNAL "Enable the ${target} tapir target" FORCE)
-  else ()
-    message(FATAL_ERROR "Unknown Tapir target: ${target}")
-  endif()
-endforeach()
-
 # This is just the subpath to the internal directory. It will be interpreted
 # relative to some base path, typically the ${CMAKE_INSTALL_PREFIX}
 get_clang_resource_dir(CLANG_RESOURCE_SUBDIR)
@@ -91,7 +58,7 @@ get_clang_resource_dir(CLANG_RESOURCE_INTDIR
 get_clang_resource_dir(CLANG_RESOURCE_INSTALL_DIR
   PREFIX ${CMAKE_INSTALL_PREFIX})
 
-if (KITSUNE_KOKKOS_ENABLE)
+if (KITSUNE_KOKKOS_ENABLED)
   # We currently don't support using a pre-built Kokkos - even if it has been
   # patched the way we need it to be. This could possibly be moved to
   # kitsune/runtime, just so everything that needs to be fetched and built is
@@ -191,7 +158,7 @@ if (KITSUNE_KOKKOS_ENABLE)
     "Additional linker flags needed for Kokkos support")
 endif()
 
-if (KITSUNE_CUDA_ENABLE)
+if (KITSUNE_CUDA_ENABLED)
   message(STATUS "Kitsune: CUDA target enabled")
 
   find_package(CUDAToolkit ${KITSUNE_CUDA_VERSION_MIN} REQUIRED)
@@ -247,7 +214,7 @@ if (KITSUNE_CUDA_ENABLE)
     "Additional linker flags needed for the Cuda target")
 endif()
 
-if (KITSUNE_HIP_ENABLE)
+if (KITSUNE_HIP_ENABLED)
   message(STATUS "Kitsune: HIP target enabled.")
 
   # Apparently, ROCM_PATH needs to be set for Hip's build system to work
@@ -316,7 +283,7 @@ if (KITSUNE_HIP_ENABLE)
   message(STATUS "hip bitcode file location: ${KITSUNE_HIP_BITCODE_DIR}")
 endif()
 
-if (KITSUNE_OPENCILK_ENABLE)
+if (KITSUNE_OPENCILK_ENABLED)
   message(STATUS "Kitsune: OpenCilk target enabled")
 
   # We currently don't allow using a pre-built Cheetah. It would have to be
@@ -425,7 +392,7 @@ if (KITSUNE_OPENCILK_ENABLE)
 
 endif()
 
-if (KITSUNE_OPENMP_ENABLE)
+if (KITSUNE_OPENMP_ENABLED)
   message(STATUS "Kitsune: OpenMP target enabled")
 
   # TODO: Do we need to check for libomp?
@@ -455,7 +422,7 @@ if (KITSUNE_OPENMP_ENABLE)
     "Additional linker flags needed for the OpenMP target")
 endif()
 
-if (KITSUNE_QTHREADS_ENABLE)
+if (KITSUNE_QTHREADS_ENABLED)
   message(STATUS "Kitsune: Qthreads target enabled")
 
   # FIXME: Do find_package or something here for qthreads. That will set
@@ -492,7 +459,7 @@ if (KITSUNE_QTHREADS_ENABLE)
     "Additional linker flags needed for the Qthreads target")
 endif()
 
-if (KITSUNE_REALM_ENABLE)
+if (KITSUNE_REALM_ENABLED)
   message(STATUS "Kitsune: Realm target enabled")
 
   # FIXME: Do find_package or something here for realm. That will set
@@ -600,22 +567,22 @@ ExternalProject_Add(kitrt
              -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON
              -DKITSUNE_CUDA_VERSION_MIN=${KITSUNE_CUDA_VERSION_MIN}
              -DKITSUNE_ROCM_VERSION_MIN=${KITSUNE_ROCM_VERSION_MIN}
-             -DKITSUNE_CUDA_ENABLE=${KITSUNE_CUDA_ENABLE}
+             -DKITSUNE_CUDA_ENABLED=${KITSUNE_CUDA_ENABLED}
              -DKITSUNE_CUDA_INCLUDE_DIR=${KITSUNE_CUDA_INCLUDE_DIR}
              -DKITSUNE_CUDA_BINARY_DIR=${KITSUNE_CUDA_BINARY_DIR}
              -DKITSUNE_CUDA_LIBRARY_DIR=${KITSUNE_CUDA_LIBRARY_DIR}
              -DKITSUNE_CUDA_LIB_CUDA=${KITSUNE_CUDA_LIB_CUDA}
              -DKITSUNE_CUDA_LIB_CUDART=${KITSUNE_CUDA_LIB_CUDART}
              -DKITSUNE_CUDA_LIB_NVPTX_STATIC=${KITSUNE_CUDA_LIB_NVPTX_STATIC}
-             -DKITSUNE_HIP_ENABLE=${KITSUNE_HIP_ENABLE}
+             -DKITSUNE_HIP_ENABLED=${KITSUNE_HIP_ENABLED}
              -DKITSUNE_HIP_PREFIX=${KITSUNE_HIP_PREFIX}
              -DKITSUNE_HIP_INCLUDE_DIR=${KITSUNE_HIP_INCLUDE_DIR}
              -DKITSUNE_HIP_LIBRARY_DIR=${KITSUNE_HIP_LIBRARY_DIR}
              -DKITSUNE_HIP_LIB_AMDHIP64=${KITSUNE_HIP_LIB_AMDHIP64}
-             -DKITSUNE_OPENCILK_ENABLE=${KITSUNE_OPENCILK_ENABLE}
-             -DKITSUNE_OPENMP_ENABLE=${KITSUNE_OPENMP_ENABLE}
-             -DKITSUNE_QTHREADS_ENABLE=${KITSUNE_QTHREADS_ENABLE}
-             -DKITSUNE_REALM_ENABLE=${KITSUNE_REALM_ENABLE}
+             -DKITSUNE_OPENCILK_ENABLED=${KITSUNE_OPENCILK_ENABLED}
+             -DKITSUNE_OPENMP_ENABLED=${KITSUNE_OPENMP_ENABLED}
+             -DKITSUNE_QTHREADS_ENABLED=${KITSUNE_QTHREADS_ENABLED}
+             -DKITSUNE_REALM_ENABLED=${KITSUNE_REALM_ENABLED}
              -DKITRT_ENABLE_DEBUG=${KITRT_ENABLE_DEBUG}
              -DKITRT_ENABLE_VERBOSE=${KITRT_ENABLE_VERBOSE}
              -DKITRT_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}

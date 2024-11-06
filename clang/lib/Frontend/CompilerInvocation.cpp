@@ -4527,7 +4527,7 @@ bool CompilerInvocation::ParseKitsuneArgs(KitsuneOptions &Opts, ArgList &Args,
 
   bool isKokkos = Args.hasArg(options::OPT_fkokkos);
   bool isKokkosNoInit = Args.hasArg(options::OPT_fkokkos_no_init);
-  if ((isKokkos || isKokkosNoInit) && !KITSUNE_KOKKOS_ENABLE) {
+  if ((isKokkos || isKokkosNoInit) && !KITSUNE_KOKKOS_ENABLED) {
     Diags.Report(diag::err_drv_kitsune_kokkos_disabled);
   } else {
     Opts.setKokkos(isKokkos);

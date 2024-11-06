@@ -18,7 +18,11 @@
 // CHECK-CUSTOM-SAME: "-D_tapir_cuda_target"
 // CHECK-CUSTOM-SAME: "-Wsome_compiler_flag"
 // CHECK-CUSTOM: {{^[ ]*"[^"]+/[l]?}}ld{{[.]?[^ ]*}}"
-// CHECK-CUSTOM-SAME: "-some_linker_flag"
+
+// It is a pain to check for the actual linker executable. There are far too
+// many options depending on the platform, so just check the next line for the
+// expected linker flags.
+// CHECK-CUSTOM: "-some_linker_flag"
 // CHECK-CUSTOM-SAME: -lkitrt
 // CHECK-CUSTOM-SAME: -lcudart
 // CHECK-CUSTOM-SAME: -lcuda

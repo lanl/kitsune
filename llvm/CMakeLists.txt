@@ -253,11 +253,59 @@ if (NOT "kitsune" IN_LIST LLVM_ENABLE_PROJECTS)
     list(APPEND LLVM_ENABLE_PROJECTS "lld")
   endif ()
 
-  message(STATUS "New LLVM_ENABLE_PROJECTS: ${LLVM_ENABLE_PROJECTS}")
-
   # Currently, flang is not required, but if it is, MLIR should be enabled as
   # well.
+
+  message(STATUS "Updated LLVM_ENABLE_PROJECTS: ${LLVM_ENABLE_PROJECTS}")
 endif ()
+
+# Ideally, this should be left in kitsune/CMakeLists.txt, but we need these to
+# conditionally compile the tapir targets that are enabled. The kitsune/
+# directory is only processed after the subdirectories of llvm/, but that is
+# too late. It would be nice to find a way to set these in kitsune/ so the
+# footprint in this file is reduced.
+#
+# The Kokkos option does not need to be moved here (for now) because that only
+# affects clang. And we have ensured that kitsune is configured before clang.
+#
+set(KITSUNE_CUDA_ENABLED OFF CACHE INTERNAL "Enable the cuda tapir target" FORCE)
+set(KITSUNE_HIP_ENABLED OFF CACHE INTERNAL "Enable the hip tapir target" FORCE)
+set(KITSUNE_OPENCILK_ENABLED OFF CACHE INTERNAL "Enable the opencilk tapir target" FORCE)
+set(KITSUNE_OPENMP_ENABLED OFF CACHE INTERNAL "Enable the openmp tapir target" FORCE)
+set(KITSUNE_QTHREADS_ENABLED OFF CACHE INTERNAL "Enable the qthreads tapir target" FORCE)
+set(KITSUNE_REALM_ENABLED OFF CACHE INTERNAL "Enable the realm tapir target" FORCE)
+
+# TODO: Need to update the openmp, qthreads and realm targets and add them
+# back into this list. These targets have not been tested in a while and have
+# probably bit-rotted. Enabling them will raise a configure-time error.
+set(KITSUNE_ALL_TAPIR_TARGETS
+  "cuda;hip;opencilk"
+  CACHE STRING
+  "All known Tapir targets.")
+
+set(KITSUNE_DEFAULT_TAPIR_TARGETS
+  "cuda;hip;opencilk"
+  CACHE STRING
+  "The Tapir targets that are built by default if targets are not explicitly specified.")
+
+set(KITSUNE_ENABLE_TAPIR_TARGETS
+  "${KITSUNE_DEFAULT_TAPIR_TARGETS}"
+  CACHE STRING
+  "Semicolon-separated list of runtime targets to build (or \"all\".)")
+
+if (NOT KITSUNE_ENABLE_TAPIR_TARGETS)
+  message(FATAL_ERROR "At least one runtime target must be built")
+endif ()
+
+foreach(target IN LISTS KITSUNE_ENABLE_TAPIR_TARGETS)
+  if (target IN_LIST KITSUNE_ALL_TAPIR_TARGETS)
+    message(STATUS "${target} tapir target enabled")
+    string(TOUPPER "${target}" upper_target)
+    set(KITSUNE_${upper_target}_ENABLED ON CACHE INTERNAL "Enable the ${target} tapir target" FORCE)
+  else ()
+    message(FATAL_ERROR "Unknown Tapir target: ${target}")
+  endif()
+endforeach()
 
 # We always want libLLVM to be build because we link to it in Kitsune's runtime,
 # libkitrt
