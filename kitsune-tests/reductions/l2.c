@@ -14,10 +14,11 @@ __attribute__((noinline))
 double l2(uint64_t n, double* a){
   double red = 0; 
   forall(uint64_t i=0; i<n; i++){
-    sum(&red, a[i]*a[i]); 
+    sum(&red, a[i]); 
   }
 
-  return sqrt(red);
+  return red; 
+  //return sqrt(red);
 }
 
 int main(int argc, char** argv){
@@ -27,10 +28,10 @@ int main(int argc, char** argv){
   double* arr = (double*)gpuManagedMalloc(sizeof(double) * n); 
 
   forall(uint64_t i=0; i<n; i++){
-    arr[i] = i; 
+    arr[i] = 1; 
   }
 
-  printf("par:%f \n", l2(n, arr));
+  printf("result: %f \n", l2(n, arr));
 
   /*
   clock_t before = clock();

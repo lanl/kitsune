@@ -16,13 +16,17 @@
 #if 0
 
 #include "llvm/Transforms/Tapir/GPUABI.h"
+#include "llvm/Transforms/Tapir/TapirToTarget.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Tapir/Outline.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/LoopPeel.h"
+#include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Vectorize.h"
@@ -105,15 +109,11 @@ LLVMLoop::LLVMLoop(Module &M)
 
   // Insert runtime-function declarations in LLVM host modules.
   Type *LLVMInt32Ty = Type::getInt32Ty(LLVMM.getContext());
-  Type *LLVMInt64Ty = Type::getInt64Ty(LLVMM.getContext());
   GetThreadIdx = LLVMM.getOrInsertFunction("gtid", LLVMInt32Ty);
-  Function* getid = LLVMM.getFunction("gtid");
 
   Type *VoidTy = Type::getVoidTy(M.getContext());
   Type *VoidPtrTy = Type::getInt8PtrTy(M.getContext());
   Type *VoidPtrPtrTy = VoidPtrTy->getPointerTo();
-  Type *Int8Ty = Type::getInt8Ty(M.getContext());
-  Type *Int32Ty = Type::getInt32Ty(M.getContext());
   Type *Int64Ty = Type::getInt64Ty(M.getContext());
   GPUInit = M.getOrInsertFunction("initRuntime", VoidTy);
   GPULaunchKernel = M.getOrInsertFunction("launchBCKernel", VoidPtrTy, VoidPtrTy, Int64Ty, VoidPtrPtrTy, Int64Ty);
@@ -187,19 +187,24 @@ unsigned LLVMLoop::getLimitArgIndex(const Function &F, const ValueSet &Args)
 
 void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
                                    ValueToValueMapTy &VMap) {
-  LLVMContext &Ctx = M.getContext();
-  Type *Int8Ty = Type::getInt8Ty(Ctx);
-  Type *Int32Ty = Type::getInt32Ty(Ctx);
-  //Type *Int64Ty = Type::getInt64Ty(Ctx);
-  //Type *VoidPtrTy = Type::getInt8PtrTy(Ctx);
   Task *T = TL.getTask();
   Loop *L = TL.getLoop();
 
+  Function *Helper = Out.Outline;
+
+  DominatorTree DT;
+  DT.recalculate(*Helper); 
+  LoopInfo LI(DT); 
+
+  // The loop we care about is the outermost loop in the 
 
   BasicBlock *Entry = cast<BasicBlock>(VMap[L->getLoopPreheader()]);
   BasicBlock *Header = cast<BasicBlock>(VMap[L->getHeader()]);
   BasicBlock *Exit = cast<BasicBlock>(VMap[TL.getExitBlock()]);
   PHINode *PrimaryIV = cast<PHINode>(VMap[TL.getPrimaryInduction().first]);
+
+  Loop *NewLoop = LI.getLoopFor(Header); 
+
   InductionDescriptor ID = TL.getPrimaryInduction().second; 
   Value *PrimaryIVInput = PrimaryIV->getIncomingValueForBlock(Entry);
   Instruction *ClonedSyncReg = cast<Instruction>(
@@ -217,8 +222,7 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   Value *ThreadID = B.CreateIntCast(ThreadIdx, PrimaryIV->getType(), false);
 
 
-  Function *Helper = Out.Outline;
-  Helper->setName("kitsune_kernel");
+  Helper->setName("kitsune_kernel"); 
   // Fix argument pointer types to global, nocapture
   // TODO: read/write attributes?
   LLVM_DEBUG(dbgs() << "Function type after globalization of argument pointers << " << *Helper->getType() << "\n");
@@ -268,6 +272,49 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   Value* NewStep = IncB.CreateMul(CStep, Grainsize); 
   BinOp->setOperand(1, NewStep); 
   ClonedCond->setPredicate(ICmpInst::Predicate::ICMP_UGE); 
+
+  // Make each thread reduce into its local memory
+  for(auto &BB : NewLoop->getBlocks()){
+    for(auto &I : *BB){
+      if(auto *CI = dyn_cast<CallInst>(&I)){
+        auto *f = CI->getCalledFunction(); 
+        if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+          IRBuilder<> PB(&I); 
+          auto ptr = CI->getOperand(0); 
+          auto ty = CI->getOperand(1)->getType();  
+          auto lptr = PB.CreateGEP(ty, ptr, ThreadIdx); 
+          CI->setOperand(0, lptr); 
+          f->removeFnAttr(Attribute::NoInline); 
+        }
+      }
+    }
+  }
+
+  TargetLibraryInfoImpl TLII(Triple(M.getTargetTriple()));
+  TargetLibraryInfo TLI(TLII); 
+  AssumptionCache AC(*Helper); 
+  ScalarEvolution SE(*Helper, TLI, AC, DT, LI); 
+  ValueToValueMapTy peelVMap; 
+  simplifyLoop(NewLoop, &DT, &LI, &SE, &AC, nullptr, false); 
+  peelLoop(NewLoop, 1, &LI, &SE, DT, &AC, false, peelVMap); 
+  SmallVector<Instruction*, 4> cis;
+  for(auto &BB : *Helper){
+    if(!NewLoop->contains(&BB)){ // better way?
+      for(auto &I : BB){
+        if(auto *CI = dyn_cast<CallInst>(&I)){
+          auto *f = CI->getCalledFunction(); 
+          if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+            IRBuilder<> pb(&I); 
+            pb.CreateStore(CI->getArgOperand(1), CI->getArgOperand(0)); 
+            cis.push_back(&I); 
+          }
+        }
+      }
+    }
+  }
+  for(auto &I : cis){
+    I->eraseFromParent(); 
+  }
 }
 
 void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
@@ -425,7 +472,7 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
 }
 
-void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, ValueSet &LoopInputs) {
+void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap) {
   Loop *L = TL.getLoop();  
   BasicBlock *PH = L->getLoopPreheader(); 
   BasicBlock *Header = L->getHeader();
@@ -472,7 +519,6 @@ void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, V
     GS = RB.CreateCall(GPUGridSize); 
     Value *NBytes = RB.CreateMul(GS, ConstantInt::get(GS->getType(), DL.getTypeAllocSize(Ty))); 
     CallInst *Alloc = RB.CreateCall(GPUManagedMalloc, {NBytes}); 
-    LoopInputs.insert(Alloc); 
     // We overwrite in the body the location to Alloc, which will be replaced with a GEP using the tid in postprocessing
     CI->setOperand(0, Alloc); 
 
@@ -511,7 +557,6 @@ void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, V
         BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
                           Idx->getName() + ".add");
     BasicBlock* Body = BodyTerm->getParent(); 
-    BasicBlock* LoopExit = ExitTerm->getParent(); 
     Idx->addIncoming(IdxAdd, Body); 
     ReplaceInstWithInst(BodyTerm, BranchInst::Create(RedEpiHeader)); 
 

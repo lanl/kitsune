@@ -1536,10 +1536,14 @@ Function *LoopSpawningImpl::createHelperForTapirLoop(
 /// Outline all recorded Tapir loops in the function.
 TaskOutlineMapTy LoopSpawningImpl::outlineAllTapirLoops() {
 
+  std::map<Loop *, ValueToValueMapTy> LoopVMaps;   
+
   // Prepare Tapir loops for outlining.
   for (Task *T : post_order(TI.getRootTask())) {
-    if (TapirLoopInfo *TL = getTapirLoop(T)) {
+    // Run a pre-processing step before we create the helper function.
 
+    if (TapirLoopInfo *TL = getTapirLoop(T)) {
+      
       PredicatedScalarEvolution PSE(SE, *TL->getLoop());
 
       bool canOutline = TL->prepareForOutlining(DT, LI, TI, PSE, AC, LS_NAME,
@@ -1556,6 +1560,8 @@ TaskOutlineMapTy LoopSpawningImpl::outlineAllTapirLoops() {
       OutlineProcessors[TL] =
         std::unique_ptr<LoopOutlineProcessor>(getOutlineProcessor(TL));
 
+      Loop *L = TL->getLoop(); 
+      OutlineProcessors[TL]->preProcessTapirLoop(*TL, LoopVMaps[L]);
     }
   }
 
@@ -1600,9 +1606,6 @@ TaskOutlineMapTy LoopSpawningImpl::outlineAllTapirLoops() {
     Loop *L = TL->getLoop();
     LLVM_DEBUG(dbgs() << "Outlining Tapir " << *L << "\n");
 
-    ValueToValueMapTy VMap; 
-    // Run a pre-processing step before we create the helper function.
-    OutlineProcessors[TL]->preProcessTapirLoop(*TL, VMap, LoopInputSets[L]);
 
     // Convert the inputs of the Tapir loop to inputs to the helper.
     ValueSet TLInputsFixed;
@@ -1647,6 +1650,8 @@ TaskOutlineMapTy LoopSpawningImpl::outlineAllTapirLoops() {
       LoopInputs[L].push_back(V);
     LoopArgStarts[L] = ArgStart;
 
+    ValueToValueMapTy &VMap = LoopVMaps[L]; 
+    
     // Create the helper function.
     Function *Outline = createHelperForTapirLoop(
         TL, LoopArgs[L], OutlineProcessors[TL]->getIVArgIndex(F, LoopArgs[L]),
