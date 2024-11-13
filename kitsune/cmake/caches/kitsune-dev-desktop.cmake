@@ -75,7 +75,7 @@ set(CLANG_VENDOR_UTI "gov.lanl.kitsune" CACHE STRING "")
 set(KITSUNE_ENABLE_TAPIR_TARGETS "cuda;hip;opencilk")
 
 # Enable tailored Kokkos compilation.
-set(KITSUNE_KOKKOS_ENABLE ON CACHE BOOL
+set(KITSUNE_KOKKOS_ENABLED ON CACHE BOOL
   "Enable custom recognition and compilation of Kokkos")
 
 set(KITSUNE_BUILD_EXAMPLES OFF CACHE BOOL "")

@@ -3,9 +3,8 @@
 // CHECK: "-cc1"
 // CHECK-SAME: "-D_tapir_hip_target"
 
-// The link line may have some optional space at the start of the line followed
-// by the absolute path to the linker in quotes. The linker name itself could
-// be lld, but we also allow matches to ld.gold, ld.bfd etc.
-// CHECK: {{^[ ]*"[^"]+/[l]?}}ld{{[.]?[^ ]*}}"
-// CHECK-SAME: -lkitrt
+// It is a pain to check for the actual linker executable. There are far too
+// many options depending on the platform, so just check the next line for the
+// expected linker flags.
+// CHECK: -lkitrt
 // CHECK-SAME: -lamdhip64

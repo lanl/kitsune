@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "kitsune/Config/config.h"
 #include "llvm/Analysis/TapirTaskInfo.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Dominators.h"
@@ -44,27 +45,50 @@ static const char TimerGroupName[] = DEBUG_TYPE;
 static const char TimerGroupDescription[] = "Tapir lowering";
 
 TapirTarget *llvm::getTapirTargetFromID(Module &M, TapirTargetID ID) {
+  // Yes, this is absolutely hideous. We should try to find a nicer way than
+  // this horrendous conditionally compiled mess!
   switch (ID) {
   case TapirTargetID::None:
     return nullptr;
   case TapirTargetID::Serial:
     return new SerialABI(M);
+
+#if KITSUNE_CUDA_ENABLED
   case TapirTargetID::Cuda:
     return new CudaABI(M);
+#endif // KITSUNE_CUDA_ENABLED
+
+#if KITSUNE_HIP_ENABLED
   case TapirTargetID::Hip:
     return new HipABI(M);
+#endif // KITSUNE_HIP_ENABLED
+
+    // For now, these targets are always built, but that might change.
   case TapirTargetID::Lambda:
     return new LambdaABI(M);
   case TapirTargetID::OMPTask:
     return new OMPTaskABI(M);
+
+#if KITSUNE_OPENCILK_ENABLED
   case TapirTargetID::OpenCilk:
     return new OpenCilkABI(M);
+#endif // KITSUNE_OPENCILK_ENABLED
+
+#if KITSUNE_OPENMP_ENABLED
   case TapirTargetID::OpenMP:
     llvm_unreachable("OpenMP ABI is out of date");
+#endif // KITSUNE_OPENMP_ENABLED
+
+#if KITSUNE_QTHREADS_ENABLED
   case TapirTargetID::Qthreads:
     return new QthreadsABI(M);
+#endif // KITSUNE_QTHREADS_ENABLED
+
+#if KITSUNE_REALM_ENABLED
   case TapirTargetID::Realm:
     return new RealmABI(M);
+#endif // KITSUNE_REALM_ENABLED
+
   default:
     llvm_unreachable("Invalid TapirTargetID");
   }
@@ -696,18 +720,18 @@ Function *llvm::createHelperForTask(Function &F, Task *T, ValueSet &Args,
     NamedRegionTimer NRT("CreateHelper", "Create helper function",
                          TimerGroupName, TimerGroupDescription,
                          TimePassesIsEnabled);
-    Module* M = F.getParent();
+    Module *M = F.getParent();
     CloneFunctionChangeType Changes =
         M == DestM ? CloneFunctionChangeType::GlobalChanges
                    : CloneFunctionChangeType::DifferentModule;
     std::unique_ptr<OutlineMaterializer> Mat =
         std::make_unique<OutlineMaterializer>(
             dyn_cast<Instruction>(DI->getSyncRegion()));
-    Helper = CreateHelper(
-        Args, Outputs, TaskBlocks, Header, Entry, DI->getContinue(), VMap,
-        DestM, Changes, Returns, NameSuffix.str(),
-        &ReattachBlocks, &TaskResumeBlocks, &SharedEHEntries, nullptr,
-        &UnreachableExits, ReturnType, nullptr, nullptr, Mat.get());
+    Helper = CreateHelper(Args, Outputs, TaskBlocks, Header, Entry,
+                          DI->getContinue(), VMap, DestM, Changes, Returns,
+                          NameSuffix.str(), &ReattachBlocks, &TaskResumeBlocks,
+                          &SharedEHEntries, nullptr, &UnreachableExits,
+                          ReturnType, nullptr, nullptr, Mat.get());
   }
   assert(Returns.empty() && "Returns cloned when cloning detached CFG.");
 
@@ -921,17 +945,17 @@ Function *llvm::createHelperForTaskFrame(Function &F, Spindle *TF,
     NamedRegionTimer NRT("CreateHelper", "Create helper function",
                          TimerGroupName, TimerGroupDescription,
                          TimePassesIsEnabled);
-    Module* M = F.getParent();
+    Module *M = F.getParent();
     CloneFunctionChangeType Changes =
         M == DestM ? CloneFunctionChangeType::GlobalChanges
                    : CloneFunctionChangeType::DifferentModule;
     std::unique_ptr<OutlineMaterializer> Mat =
         std::make_unique<OutlineMaterializer>();
-    Helper = CreateHelper(Args, Outputs, TaskBlocks, Header, Entry, Continue,
-                          VMap, DestM, Changes, Returns,
-                          NameSuffix.str(), &TFEndBlocks, &TFResumeBlocks,
-                          &SharedEHEntries, nullptr, nullptr, ReturnType,
-                          nullptr, nullptr, Mat.get());
+    Helper =
+        CreateHelper(Args, Outputs, TaskBlocks, Header, Entry, Continue, VMap,
+                     DestM, Changes, Returns, NameSuffix.str(), &TFEndBlocks,
+                     &TFResumeBlocks, &SharedEHEntries, nullptr, nullptr,
+                     ReturnType, nullptr, nullptr, Mat.get());
   } // end timed region
   assert(Returns.empty() && "Returns cloned when cloning detached CFG.");
 
@@ -1121,8 +1145,8 @@ TaskOutlineInfo llvm::outlineTask(Task *T, ValueSet &Inputs,
   Target->setupTaskOutlineArgs(F, HelperArgs, HelperInputs, TaskHelperArgs);
 
   // Clone the blocks into a helper function.
-  Function *Helper = createHelperForTask(F, T, HelperArgs, DestM, VMap,
-                                         ReturnType, OA);
+  Function *Helper =
+      createHelperForTask(F, T, HelperArgs, DestM, VMap, ReturnType, OA);
   Value *ClonedTFCreate = TFCreate ? VMap[TFCreate] : nullptr;
   return TaskOutlineInfo(
       Helper, T->getEntry(), dyn_cast_or_null<Instruction>(VMap[DI]),

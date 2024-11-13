@@ -1,4 +1,4 @@
-ifneq ($(KITSUNE_CUDA_ENABLE),)
+ifneq ($(KITSUNE_CUDA_ENABLED),)
   CUDA_ARCH?=sm_86
   $(info   cuda: target arch: $(CUDA_ARCH))
   NVCC=$(CUDA_PATH)/bin/nvcc
@@ -10,10 +10,10 @@ ifneq ($(KITSUNE_CUDA_ENABLE),)
     --expt-relaxed-constexpr \
     -O$(KITSUNE_OPTLEVEL)
 
-  CLANG_CUDA=$(KITSUNE_PREFIX)/bin/clang 
+  CLANG_CUDA=$(KITSUNE_PREFIX)/bin/clang
   CLANG_CUDA_FLAGS=-x cuda --no-cuda-version-check --cuda-gpu-arch=$(CUDA_ARCH) -O$(KITSUNE_OPTLEVEL) --cuda-path=$(CUDA_PATH)
 
   BUILD_CUDA_EXPERIMENTS=true
   $(info note: cuda experiments enabled)
-endif 
+endif
 

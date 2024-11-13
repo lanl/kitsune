@@ -15,5 +15,8 @@
 // CHECK-CUSTOM: "-cc1"
 // CHECK-CUSTOM-SAME: "-D" "some_preprocessor_flag"
 // CHECK-CUSTOM-SAME: "-Wsome_compiler_flag"
-// CHECK-CUSTOM: {{^[ ]*"[^"]+/[l]?}}ld{{[.]?[^ ]*}}"
+
+// It is a pain to check for the actual linker executable. There are far too
+// many options depending on the platform, so just check the next line for the
+// expected linker flag.
 // CHECK-CUSTOM-SAME: "-some_linker_flag"

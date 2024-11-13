@@ -86,7 +86,7 @@ set(LLVM_TARGETS_TO_BUILD "AArch64;X86;NVPTX;AMDGPU" CACHE STRING "")
 set(KITSUNE_ENABLE_TAPIR_TARGETS "cuda;hip;opencilk")
 
 # Enable tailored Kokkos compilation.
-set(KITSUNE_KOKKOS_ENABLE ON CACHE BOOL
+set(KITSUNE_KOKKOS_ENABLED ON CACHE BOOL
   "Enable custom recognition and compilation of Kokkos")
 
 # Enable the Kitsune runtime.
