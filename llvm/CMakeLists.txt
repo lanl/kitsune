@@ -288,24 +288,29 @@ set(KITSUNE_DEFAULT_TAPIR_TARGETS
   CACHE STRING
   "The Tapir targets that are built by default if targets are not explicitly specified.")
 
-set(KITSUNE_ENABLE_TAPIR_TARGETS
+set(KITSUNE_ENABLED_TAPIR_TARGETS
   "${KITSUNE_DEFAULT_TAPIR_TARGETS}"
   CACHE STRING
   "Semicolon-separated list of runtime targets to build (or \"all\".)")
 
-if (NOT KITSUNE_ENABLE_TAPIR_TARGETS)
+if (NOT KITSUNE_ENABLED_TAPIR_TARGETS)
   message(FATAL_ERROR "At least one runtime target must be built")
 endif ()
 
-foreach(target IN LISTS KITSUNE_ENABLE_TAPIR_TARGETS)
+# The serial Tapir target is always enabled
+set(KITSUNE_TAPIR_TARGETS_STR "serial")
+foreach(target IN LISTS KITSUNE_ENABLED_TAPIR_TARGETS)
   if (target IN_LIST KITSUNE_ALL_TAPIR_TARGETS)
     message(STATUS "${target} tapir target enabled")
-    string(TOUPPER "${target}" upper_target)
-    set(KITSUNE_${upper_target}_ENABLED ON CACHE INTERNAL "Enable the ${target} tapir target" FORCE)
+    string(TOUPPER "${target}" upper)
+    set(KITSUNE_${upper}_ENABLED ON CACHE INTERNAL "Enable the ${target} tapir target" FORCE)
+    string(TOLOWER "${target}" lower)
+    set(KITSUNE_TAPIR_TARGETS_STR "${KITSUNE_TAPIR_TARGETS_STR} ${lower}")
   else ()
     message(FATAL_ERROR "Unknown Tapir target: ${target}")
   endif()
 endforeach()
+string(STRIP "${KITSUNE_TAPIR_TARGETS_STR}" KITSUNE_ENABLED_TAPIR_TARGETS_STR)
 
 # We always want libLLVM to be build because we link to it in Kitsune's runtime,
 # libkitrt
