@@ -80,7 +80,7 @@ set(CLANG_VENDOR_UTI "gov.lanl.kitsune" CACHE STRING "")
 set(LLVM_TARGETS_TO_BUILD "X86;NVPTX;AMDGPU" CACHE STRING "")
 
 # Enable specific tapir targets.
-set(KITSUNE_ENABLE_TAPIR_TARGETS "cuda;hip;opencilk")
+set(KITSUNE_ENABLED_TAPIR_TARGETS "cuda;hip;opencilk")
 
 # Enable tailored Kokkos compilation.
 set(KITSUNE_KOKKOS_ENABLED ON CACHE BOOL
