@@ -8,9 +8,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(kitsune C CXX)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+
 include(ExternalProject)
 include(FetchContent)
 include(GetClangResourceDir)
+include(KitsuneUtils)
 
 if (WIN32)
   message(FATAL_ERROR "Kitsune is not supported on Windows")
@@ -18,7 +21,7 @@ endif ()
 
 set(KITSUNE_C_FRONTEND kitcc)
 set(KITSUNE_CXX_FRONTEND kit++)
-set(KITSUNE_Fortran_FRONTEND kitfort)
+set(KITSUNE_Fortran_FRONTEND kitfc)
 
 option(KITSUNE_INCLUDE_TESTS
   "Generate build targets for the Kitsune tests"
@@ -502,24 +505,25 @@ endif()
 set(KITSUNE_DEFAULT_TAPIR_RUNTIME "opencilk" CACHE STRING
   "Default Tapir runtime used by -ftapir.")
 
-# This is ugly because it creates a dangling symlink because this is executed
-# before clang is built. However, we force clang to be built, so we are sure
-# of it not dangling by the time everything is built.
-add_custom_target(${KITSUNE_C_FRONTEND} ALL
-  ${CMAKE_COMMAND} -E create_symlink
-  clang
-  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${KITSUNE_C_FRONTEND})
+# If any more languages are enabled, a corresponding variable should be added
+# here. For instance, we may want to run Cuda code through Kitsune, in which
+# case, a Cuda frontend will need to be created similar to the C and C++ ones.
+set(KITSUNE_C_ENABLED OFF)
+set(KITSUNE_CXX_ENABLED OFF)
+set(KITSUNE_Fortran_ENABLED OFF)
 
-add_custom_target(${KITSUNE_CXX_FRONTEND} ALL
-  ${CMAKE_COMMAND} -E create_symlink
-  clang++
-  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${KITSUNE_CXX_FRONTEND})
+if ("clang" IN_LIST LLVM_ENABLE_PROJECTS)
+  set(KITSUNE_C_ENABLED ON)
+  setup_frontend_symlink(${KITSUNE_C_FRONTEND} clang)
 
-foreach (link ${KITSUNE_C_FRONTEND} ${KITSUNE_CXX_FRONTEND})
-  install(FILES
-    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${link}
-    DESTINATION ${CMAKE_INSTALL_BINDIR})
-endforeach()
+  set(KITSUNE_CXX_ENABLED ON)
+  setup_frontend_symlink(${KITSUNE_CXX_FRONTEND} clang++)
+endif ()
+
+if ("flang" IN_LIST LLVM_ENABLE_PROJECTS)
+  set(KITSUNE_Fortran_ENABLED ON)
+  setup_frontend_symlink(${KITSUNE_Fortran_FRONTEND} flang)
+endif ()
 
 add_subdirectory(configs)
 add_subdirectory(include/kitsune)
