@@ -1,3 +1,10 @@
+# ----------------------------- BEGIN MAYBE REMOVE -----------------------------
+#
+# Everything in this block (until END MAYBE REMOVE) is probably obsolete and, if
+# so, ought to be removed. These are only used in kitsune/examples, but those
+# are also likely obsolete now. But we need to double-check that before doing
+# so.
+
 #
 # Get a list of all enabled tapir runtime targets so we can
 # walk through each and do "stuff" (e.g., build an executable
@@ -63,3 +70,22 @@ function(add_tapir_dependency target abi)
   endif()
 
 endfunction()
+
+# ------------------------------ END MAYBE REMOVE ------------------------------
+
+# Setup a Kitsune frontend symlink (kitcc, kit++ etc.). symlink is the name of
+# the frontend. Target is the actual compiler that is the target of the symlink.
+macro(setup_frontend_symlink symlink target)
+  # This is ugly! The create_symlink command creates a dangling symlink because
+  # it is executed before clang (and perhaps flang) is built. However, if
+  # everything builds correctly, it will not be dangling. Obviously, a build
+  # failure will result in a dangling symlink in the build directory.
+  add_custom_target(${symlink} ALL
+    ${CMAKE_COMMAND} -E create_symlink
+    ${target}
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${symlink})
+
+  install(FILES
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${symlink}
+    DESTINATION ${CMAKE_INSTALL_BINDIR})
+endmacro()

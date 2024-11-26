@@ -16,6 +16,16 @@
 // General configuration
 #define KITSUNE_LLD "${KITSUNE_LLD}"
 
+// Kitsune language support that has been enabled
+#cmakedefine01 KITSUNE_C_ENABLED
+#cmakedefine01 KITSUNE_CXX_ENABLED
+#cmakedefine01 KITSUNE_Fortran_ENABLED
+
+// The names of the Kitsune frontends
+#define KITSUNE_C_FRONTEND       "${KITSUNE_C_FRONTEND}"
+#define KITSUNE_CXX_FRONTEND     "${KITSUNE_CXX_FRONTEND}"
+#define KITSUNE_Fortran_FRONTEND "${KITSUNE_Fortran_FRONTEND}"
+
 // Kokkos configuration
 #cmakedefine01 KITSUNE_KOKKOS_ENABLED
 
