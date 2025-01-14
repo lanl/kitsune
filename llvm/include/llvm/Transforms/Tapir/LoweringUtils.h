@@ -17,6 +17,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/Tapir/TapirTargetIDs.h"
@@ -449,7 +450,7 @@ public:
   virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap)
   { /* no-op */ }
 
-  virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, ValueSet &LoopInputs)
+  virtual void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, LoopInfo &LI)
   { preProcessTapirLoop(TL, VMap); }
 
   /// Processes an outlined Function Helper for a Tapir loop, just after the

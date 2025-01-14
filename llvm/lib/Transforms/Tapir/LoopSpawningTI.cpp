@@ -1561,9 +1561,12 @@ TaskOutlineMapTy LoopSpawningImpl::outlineAllTapirLoops() {
         std::unique_ptr<LoopOutlineProcessor>(getOutlineProcessor(TL));
 
       Loop *L = TL->getLoop(); 
-      OutlineProcessors[TL]->preProcessTapirLoop(*TL, LoopVMaps[L]);
+      OutlineProcessors[TL]->preProcessTapirLoop(*TL, LoopVMaps[L], LI);
     }
   }
+
+  LI.releaseMemory(); 
+  LI.analyze(DT); 
 
   TaskOutlineMapTy TaskToOutline;
   DenseMap<Loop *, ValueSet> LoopInputSets;

@@ -3,6 +3,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<kitsune.h>
+#include<omp.h>
 #include<gpu.h>
 
 reduction
@@ -14,11 +15,10 @@ __attribute__((noinline))
 double l2(uint64_t n, double* a){
   double red = 0; 
   forall(uint64_t i=0; i<n; i++){
-    sum(&red, a[i]); 
+    sum(&red, x); 
   }
 
-  return red; 
-  //return sqrt(red);
+  return sqrt(red); 
 }
 
 int main(int argc, char** argv){
@@ -28,23 +28,26 @@ int main(int argc, char** argv){
   double* arr = (double*)gpuManagedMalloc(sizeof(double) * n); 
 
   forall(uint64_t i=0; i<n; i++){
-    arr[i] = 1; 
+    arr[i] = (double)i; 
   }
 
   printf("result: %f \n", l2(n, arr));
 
-  /*
-  clock_t before = clock();
-  double par; 
+  double res[niter];
+  double before = omp_get_wtime(); 
   for(int i=0; i<niter; i++){
-    par = l2(n, arr);
+    double red = l2(n, arr); 
+    //printf("red: %f\n", red); 
+    res[i]=red; 
   }
-  clock_t after = clock(); 
-  double partime = (double)(after - before) / 1000000; 
+  double after = omp_get_wtime(); 
 
-  printf("par: %f in %f s \n" , par, partime);
+  double partime = (double)(after - before); 
   double bw = (double)((1ULL<<e) * niter * sizeof(double)) / (1000000000.0 * partime);  
-  printf("par bandwidth: %f GB/s \n" , bw);
-  */
+  printf("bandwidth: %f GB/s \n" , bw);
+
+  //double time = (double)(after - before) / 1000000; 
+  //double bw = (double)((1ULL<<e) * niter * sizeof(double)) / (1000000000.0 * time);  
+  //printf("bandwidth: %f GB/s \n" , bw);
 }
 

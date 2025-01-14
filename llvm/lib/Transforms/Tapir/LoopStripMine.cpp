@@ -1533,28 +1533,13 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
   // Record that the remainder loop was derived from a Tapir loop.
   (*RemainderLoop)->setDerivedFromTapirLoop();
-
-  // At this point, the code is well formed.  We now simplify the new loops,
-  // doing constant propagation and dead code elimination as we go.
-  simplifyLoopAfterStripMine(L, /*SimplifyIVs*/ true, LI, SE, DT, TTI, AC);
-  simplifyLoopAfterStripMine(NewLoop, /*SimplifyIVs*/ true, LI, SE, DT, TTI,
-                             AC);
-  simplifyLoopAfterStripMine(*RemainderLoop, /*SimplifyIVs*/ true, LI, SE, DT,
-                             TTI, AC);
+  // Record that the old loop was derived from a Tapir loop.
+  L->setDerivedFromTapirLoop();
 
 #ifndef NDEBUG
   DT->verify();
   LI->verify(*DT);
 #endif
-
-  // Record that the old loop was derived from a Tapir loop.
-  L->setDerivedFromTapirLoop();
-
-  // Update TaskInfo manually using the updated DT.
-  if (TI)
-    // FIXME: Recalculating TaskInfo for the whole function is wasteful.
-    // Optimize this routine in the future.
-    TI->recalculate(*F, *DT);
 
   // accumulate reductions in main loop
   const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
@@ -1680,15 +1665,16 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
     Instruction* term = LatchExit->getTerminator(); 
     BasicBlock *PostSync = term->getSuccessor(0);
-    BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
+    BasicBlock *RedEpiHeader = SplitBlock(PostSync, PostSync->getTerminator(), DT, LI, nullptr, "reductionEpilogue"); 
+    //BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
     RedEpiHeader->moveAfter(LatchExit); 
-    ReplaceInstWithInst(term, SyncInst::Create(RedEpiHeader, SyncReg)); 
-    BranchInst::Create(PostSync, RedEpiHeader);
+    ReplaceInstWithInst(PostSync->getTerminator(), SyncInst::Create(RedEpiHeader, SyncReg)); 
+    //BranchInst::Create(PostSync, RedEpiHeader);
     PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
                                    "reductionepilogueidx",
                                    RedEpiHeader->getFirstNonPHI());
     IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
-    Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), LatchExit);
+    Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), PostSync);
     Instruction *bodyTerm, *exitTerm;
     Value *cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, outerIters); 
     SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
@@ -1715,16 +1701,43 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
     // Update Loopinfo with reduction loop
     Loop* RL = LI->AllocateLoop(); 
-    if(ParentLoop) ParentLoop->addChildLoop(RL); 
-    else LI->addTopLevelLoop(RL); 
-    RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
-    RL->addBasicBlockToLoop(body, *LI); 
+    if(!ParentLoop){
+      LI->addTopLevelLoop(RL); 
+      RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
+      RL->addBasicBlockToLoop(body, *LI); 
+    }  
+    else {
+      ParentLoop->addChildLoop(RL);
+      LI->changeLoopFor(RedEpiHeader, RL);
+      RL->addBlockEntry(RedEpiHeader);
+      LI->changeLoopFor(body, RL); 
+      RL->addBlockEntry(body);
+    }
+    simplifyLoop(RL, DT, LI, SE, AC, nullptr, PreserveLCSSA); 
   }
 
   LLVM_DEBUG(dbgs() << "Function after reduction epilogue\n" << *F);  
 
+  // At this point, the code is well formed.  We now simplify the new loops,
+  // doing constant propagation and dead code elimination as we go.
+  simplifyLoopAfterStripMine(L, /*SimplifyIVs*/ true, LI, SE, DT, TTI, AC);
+  simplifyLoopAfterStripMine(NewLoop, /*SimplifyIVs*/ true, LI, SE, DT, TTI,
+                             AC);
+  simplifyLoopAfterStripMine(*RemainderLoop, /*SimplifyIVs*/ true, LI, SE, DT,
+                             TTI, AC);
+
+
   // TODO: fix DT updates
   DT->recalculate(*F); 
+  LI->releaseMemory(); 
+  LI->analyze(*DT);
+
+  // Update TaskInfo manually using the updated DT.
+  if (TI)
+    // FIXME: Recalculating TaskInfo for the whole function is wasteful.
+    // Optimize this routine in the future.
+    TI->recalculate(*F, *DT);
+
 
 #ifndef NDEBUG
   DT->verify();

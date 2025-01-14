@@ -87,7 +87,7 @@ public:
                           ValueToValueMapTy &VMap) override final;
   void processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                DominatorTree &DT) override final;
-  void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap) override final;
+  void preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, LoopInfo& LI) override final;
 };
 } //namespace llvm
 

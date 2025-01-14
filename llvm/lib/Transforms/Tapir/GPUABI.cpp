@@ -472,12 +472,13 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
 }
 
-void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap) {
+void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap, LoopInfo &LI) {
   Loop *L = TL.getLoop();  
   BasicBlock *PH = L->getLoopPreheader(); 
   BasicBlock *Header = L->getHeader();
   BasicBlock *Latch = L->getLoopLatch();
   BranchInst *LatchBR = cast<BranchInst>(Latch->getTerminator());
+  BasicBlock &Entry = Header->getParent()->getEntryBlock(); 
   unsigned ExitIndex = LatchBR->getSuccessor(0) == Header ? 1 : 0;
   BasicBlock *LatchExit = LatchBR->getSuccessor(ExitIndex);
   DetachInst *DI = cast<DetachInst>(Header->getTerminator());
@@ -512,13 +513,13 @@ void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap) {
     //   gs = gridSize()
     //   reds = gpuManagedMalloc(gs)
     //   br header
-    IRBuilder<> RB(&PH->front()); 
+    IRBuilder<> EB(Entry.getFirstNonPHI()); 
     CallInst *CI = Red.first; 
     Value *Ptr = CI->getArgOperand(0); 
     Type *Ty = Red.second; 
-    GS = RB.CreateCall(GPUGridSize); 
-    Value *NBytes = RB.CreateMul(GS, ConstantInt::get(GS->getType(), DL.getTypeAllocSize(Ty))); 
-    CallInst *Alloc = RB.CreateCall(GPUManagedMalloc, {NBytes}); 
+    GS = EB.CreateCall(GPUGridSize); 
+    Value *NBytes = EB.CreateMul(GS, ConstantInt::get(GS->getType(), DL.getTypeAllocSize(Ty))); 
+    CallInst *Alloc = EB.CreateCall(GPUManagedMalloc, {NBytes}); 
     // We overwrite in the body the location to Alloc, which will be replaced with a GEP using the tid in postprocessing
     CI->setOperand(0, Alloc); 
 
@@ -559,13 +560,6 @@ void LLVMLoop::preProcessTapirLoop(TapirLoopInfo &TL, ValueToValueMapTy &VMap) {
     BasicBlock* Body = BodyTerm->getParent(); 
     Idx->addIncoming(IdxAdd, Body); 
     ReplaceInstWithInst(BodyTerm, BranchInst::Create(RedEpiHeader)); 
-
-    // Update Loopinfo with reduction loop
-    //Loop* RL = LI->AllocateLoop(); 
-    //if(ParentLoop) ParentLoop->addChildLoop(RL); 
-    //else LI->addTopLevelLoop(RL); 
-    //RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
-    //RL->addBasicBlockToLoop(body, *LI); 
   }
   
   LLVM_DEBUG(dbgs() << "Finished preProcessTapirLoop: " << *PH->getParent());
