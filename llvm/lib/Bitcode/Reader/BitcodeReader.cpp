@@ -2189,6 +2189,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::Range;
   case bitc::ATTR_KIND_INITIALIZES:
     return Attribute::Initializes;
+  case bitc::ATTR_KIND_KITSUNE_REDUCTION:
+    return Attribute::KitsuneReduction;
   }
 }
 

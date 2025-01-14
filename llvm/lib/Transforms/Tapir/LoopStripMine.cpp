@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Utils/SimplifyIndVar.h"
 #include "llvm/Transforms/Utils/TapirUtils.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
+#include "llvm/Transforms/Utils/LoopPeel.h"
 
 using namespace llvm;
 
@@ -804,6 +805,10 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   unsigned ExitIndex = LatchBR->getSuccessor(0) == Header ? 1 : 0;
   BasicBlock *LatchExit = LatchBR->getSuccessor(ExitIndex);
 
+  
+  Function *F = Header->getParent();
+  LLVM_DEBUG(dbgs() << "Function before strip mining\n" << *F); 
+
   // We will use the increment of the primary induction variable to derive
   // wrapping flags.
   Instruction *PrimaryInc =
@@ -1528,6 +1533,190 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
   // Record that the remainder loop was derived from a Tapir loop.
   (*RemainderLoop)->setDerivedFromTapirLoop();
+  // Record that the old loop was derived from a Tapir loop.
+  L->setDerivedFromTapirLoop();
+
+#ifndef NDEBUG
+  DT->verify();
+  LI->verify(*DT);
+#endif
+
+  // accumulate reductions in main loop
+  const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
+  std::set<std::pair<CallInst*, Type*>> reductions;
+  for (BasicBlock *BB : blocks){
+    for (Instruction &I : *BB) {
+      if(auto ci = dyn_cast<CallInst>(&I)){
+        auto f = ci->getCalledFunction(); 
+        if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+          LLVM_DEBUG(dbgs() << "Found reduction var: " << ci->getArgOperand(0)->getName() << 
+                               "with reduction function: " << f->getName() << "\n"); 
+          auto ty = ci->getArgOperand(1)->getType(); 
+          reductions.insert(std::make_pair(ci, ty)); 
+          //TODO: check the type to confirm valid reduction
+        }
+      }
+    }
+  }
+   
+  // accumulate reductions in epilog loop
+  LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
+
+  std::vector<std::tuple<CallInst*, Value* , Value*, Type*>> redMap; 
+  // TODO: Modify the strip mining outer loop to be smaller: currently we are
+  // stack allocating n/2048 reduction values.
+  // TODO: Initialize local reductions with unit values
+  Instruction *bloc = nullptr;
+  if(Instruction* I = dyn_cast<Instruction>(TripCount)){
+    bloc = I->getNextNode();
+  } else {
+    bloc = F->getEntryBlock().getTerminator();
+  }
+  IRBuilder<> RB(bloc); 
+  Value *outerIters = RB.CreateUDiv(TripCount,
+                               ConstantInt::get(TripCount->getType(), Count),
+                               "stripiter");
+  auto nred = RB.CreateAdd(outerIters, ConstantInt::get(outerIters->getType(), 1)); 
+  for(auto &pair : reductions){
+    // TODO: generic allocation/free calls
+    auto ci = pair.first; 
+    auto ptr = ci->getArgOperand(0); 
+    auto ty = pair.second; 
+    auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
+    auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(ty))); 
+    auto al = RB.CreateCall(M->getOrInsertFunction("gpuManagedMalloc", gmmTy), {arrSize}); 
+    //auto al = RB.CreateBitCast(rm, ty); 
+    //auto al = RB.CreateAlloca(ty, nred, ptr->getName() + "_reduction");
+    IRBuilder<> BH(NewLoop->getHeader()->getTerminator()); 
+    auto lptr = BH.CreateBitCast(
+      BH.CreateGEP(ty, al, NewIdx), 
+      ptr->getType());                             
+    redMap.push_back(std::make_tuple(ci, ptr, al, ty)); 
+    // Assume there is more than one element, and
+    // use the first element for the first iteration of the loop.
+    // roughly: 
+    //   red = init; 
+    //   forall(i = ...){
+    //     red = reduce(red, body(i)); 
+    //   }
+    //   red = init; 
+    //   localred[m+1]; 
+    //   
+    //   forall(k ∈ 0..m-1){
+    //     localred[i] = body(j_0); 
+    //     for(j ∈ j_k_1..j_k_l-1)
+    //       reduce(localred+i, body(j));
+    //   }
+    //   for( j ∈ j_k_m .. n )
+    //     reduce(localred+m, body(j)); 
+    //   }
+    //   for(k ∈ 0..m) 
+    //     reduce(&red, localred[k]); 
+    //
+    ptr->replaceUsesWithIf(lptr, [L](Use &u){
+      if(auto I = dyn_cast<Instruction>(u.getUser())){
+        return L->contains(I->getParent()); 
+      } else {
+        return false;
+      }; 
+    });
+  }
+  
+  // Epilog "join" of reduction values stored in local reduction value arrays.
+  // Should be able to use redMap to map original pointer (which is still used
+  // to reduce the remainder of the strimined loop, so you probably want to
+  // start the reduction with that value).
+  LLVM_DEBUG(dbgs() << "Function after strip mining, before reduction epilogue\n" << *F); 
+   
+  // We insert the reduction code at every sync corresponding to the strimined
+  // loop
+  //
+  // Sync 
+  // RedEpiHeader
+  //   RedEpiBody
+  // RedEpiExit
+
+  // Todo: re-order epilogue and reduction epilogue to preserve associativity
+  if(!reductions.empty()){
+    // Peel the first iteration of the loop and replace the reduction calls in
+    // the peeled code with stores
+    ValueToValueMapTy VMap; 
+    peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA, VMap); 
+    SmallVector<Instruction*, 4> cis;
+    for(auto &BB : NewLoop->blocks()){
+      if(!L->contains(BB)){ // better way?
+        for(auto &I : *BB){
+          if(auto *CI = dyn_cast<CallInst>(&I)){
+            auto *f = CI->getCalledFunction(); 
+            if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+              IRBuilder<> pb(&I); 
+              pb.CreateStore(CI->getArgOperand(1), CI->getArgOperand(0)); 
+              cis.push_back(&I); 
+              f->removeFnAttr(Attribute::NoInline); 
+            }
+          }
+        }
+      }
+    }
+    
+    for(auto &I : cis){
+      I->eraseFromParent();  
+    }
+
+    Instruction* term = LatchExit->getTerminator(); 
+    BasicBlock *PostSync = term->getSuccessor(0);
+    BasicBlock *RedEpiHeader = SplitBlock(PostSync, PostSync->getTerminator(), DT, LI, nullptr, "reductionEpilogue"); 
+    //BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
+    RedEpiHeader->moveAfter(LatchExit); 
+    ReplaceInstWithInst(PostSync->getTerminator(), SyncInst::Create(RedEpiHeader, SyncReg)); 
+    //BranchInst::Create(PostSync, RedEpiHeader);
+    PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
+                                   "reductionepilogueidx",
+                                   RedEpiHeader->getFirstNonPHI());
+    IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
+    Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), PostSync);
+    Instruction *bodyTerm, *exitTerm;
+    Value *cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, outerIters); 
+    SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
+
+    IRBuilder<> BB(bodyTerm); 
+    // For each reduction, get the allocated thread local reduced values and
+    // reduce them. 
+    for(auto& kv : redMap){
+      const auto [ ci, ptr, al, ty ] = kv; 
+      auto lptr = BB.CreateBitCast(
+        BB.CreateGEP(ty, al, Idx), 
+        ptr->getType());                             
+      auto x = BB.CreateLoad(ty, lptr); 
+      BB.SetCurrentDebugLocation(ci->getDebugLoc()); 
+      BB.CreateCall(ci->getCalledFunction(), { ptr, x }); 
+    }
+    Value *IdxAdd =
+        BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
+                          Idx->getName() + ".add");
+    BasicBlock* body = bodyTerm->getParent(); 
+    BasicBlock* loopExit = exitTerm->getParent(); 
+    Idx->addIncoming(IdxAdd, body); 
+    ReplaceInstWithInst(bodyTerm, BranchInst::Create(RedEpiHeader)); 
+
+    // Update Loopinfo with reduction loop
+    Loop* RL = LI->AllocateLoop(); 
+    if(!ParentLoop){
+      LI->addTopLevelLoop(RL); 
+      RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
+      RL->addBasicBlockToLoop(body, *LI); 
+    }  
+    else {
+      ParentLoop->addChildLoop(RL);
+      LI->changeLoopFor(RedEpiHeader, RL);
+      RL->addBlockEntry(RedEpiHeader);
+      LI->changeLoopFor(body, RL); 
+      RL->addBlockEntry(body);
+    }
+    simplifyLoop(RL, DT, LI, SE, AC, nullptr, PreserveLCSSA); 
+  }
+
+  LLVM_DEBUG(dbgs() << "Function after reduction epilogue\n" << *F);  
 
   // At this point, the code is well formed.  We now simplify the new loops,
   // doing constant propagation and dead code elimination as we go.
@@ -1537,19 +1726,23 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   simplifyLoopAfterStripMine(*RemainderLoop, /*SimplifyIVs*/ true, LI, SE, DT,
                              TTI, AC);
 
-#ifndef NDEBUG
-  DT->verify();
-  LI->verify(*DT);
-#endif
 
-  // Record that the old loop was derived from a Tapir loop.
-  L->setDerivedFromTapirLoop();
+  // TODO: fix DT updates
+  DT->recalculate(*F); 
+  LI->releaseMemory(); 
+  LI->analyze(*DT);
 
   // Update TaskInfo manually using the updated DT.
   if (TI)
     // FIXME: Recalculating TaskInfo for the whole function is wasteful.
     // Optimize this routine in the future.
     TI->recalculate(*F, *DT);
+
+
+#ifndef NDEBUG
+  DT->verify();
+  LI->verify(*DT);
+#endif
 
   return NewLoop;
 }

@@ -2408,6 +2408,9 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
       FuncAttrs.addMemoryAttr(llvm::MemoryEffects::inaccessibleOrArgMemOnly());
       FuncAttrs.addAttribute(llvm::Attribute::NoUnwind);
     }
+    if (TargetDecl->hasAttr<KitsuneReductionAttr>()) {
+      FuncAttrs.addAttribute(llvm::Attribute::KitsuneReduction);
+    }
     if (TargetDecl->hasAttr<RestrictAttr>())
       RetAttrs.addAttribute(llvm::Attribute::NoAlias);
     if (TargetDecl->hasAttr<ReturnsNonNullAttr>() &&
