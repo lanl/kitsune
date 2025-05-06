@@ -3,6 +3,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<gpu.h>
+#include<omp.h>
 
 double l2(uint64_t n, double* a){
   double red = 0; 
@@ -35,20 +36,15 @@ int main(int argc, char** argv){
 
   l2(n, arr);
 
-  clock_t before = clock();
+  double before = omp_get_wtime();
   double par; 
   for(int i=0; i<niter; i++){
     par = l2(n, arr);
   }
-  clock_t after = clock(); 
-  double partime = (double)(after - before) / 1000000; 
+  double after = omp_get_wtime(); 
+  double partime = after - before; 
 
-  before = clock();
-  double seq = l2_seq(n, arr);
-  after = clock(); 
-  double seqtime = (double)(after - before) / 1000000; 
-
-  printf("par: %f in %f s , seq: %f in %f s\n" , par, partime, seq, seqtime);
+  printf("par: %f in %f s\n" , par, partime);
   double bw = (double)((1ULL<<e) * niter * sizeof(double)) / (1000000000.0 * partime);  
   printf("par bandwidth: %f GB/s \n" , bw);
 }

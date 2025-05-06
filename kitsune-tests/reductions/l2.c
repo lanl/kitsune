@@ -4,6 +4,8 @@
 #include<stdlib.h>
 #include<kitsune.h>
 #include<gpu.h>
+#include<stdint.h>
+#include<omp.h>
 
 reduction
 void sum(double *a, double b){
@@ -19,14 +21,6 @@ double l2(uint64_t n, double* a){
   return sqrt(red);
 }
 
-double l2_seq(uint64_t n, double* a){
-  double red = 0; 
-  for(uint64_t i=0; i < n; i++){
-    sum(&red, a[i]*a[i]); 
-  }
-  return sqrt(red);
-}
-
 int main(int argc, char** argv){
   int e = argc > 1 ? atoi(argv[1]) : 28; 
   int niter = argc > 2 ? atoi(argv[2]) : 100; 
@@ -39,21 +33,16 @@ int main(int argc, char** argv){
 
   l2(n, arr);
 
-  clock_t before = clock();
-  double par; 
+  double par = 0; 
+  double before = omp_get_wtime();
   for(int i=0; i<niter; i++){
     par = l2(n, arr);
   }
-  clock_t after = clock(); 
-  double partime = (double)(after - before) / 1000000; 
+  double after = omp_get_wtime(); 
+  double partime = after - before; 
 
-  before = clock();
-  double seq = l2_seq(n, arr);
-  after = clock(); 
-  double seqtime = (double)(after - before) / 1000000; 
-
-  printf("par: %f in %f s , seq: %f in %f s\n" , par, partime, seq, seqtime);
+  printf("%f in %f s\n" , par, partime);
   double bw = (double)((1ULL<<e) * niter * sizeof(double)) / (1000000000.0 * partime);  
-  printf("par bandwidth: %f GB/s \n" , bw);
+  printf("bandwidth: %f GB/s \n" , bw);
 }
 

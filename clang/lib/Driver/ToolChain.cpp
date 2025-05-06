@@ -2272,10 +2272,13 @@ void ToolChain::AddKitsuneRealmCommonArgs(const ArgList &Args,
 
 void ToolChain::AddKitsunePreprocessorArgs(const ArgList &Args,
                                            ArgStringList &CmdArgs) const {
+<<<<<<< HEAD
   auto AddTTArgs = [&](TTID TT, const ArgList &Args,
                        ArgStringList &CmdArgs) -> void {
     switch (TT) {
     case TTID::Nolo:
+      return;
+    case TTID:GPU:
       return;
     case TTID::Cuda:
       return ExtractArgsFromString(KITSUNE_CUDA_EXTRA_PREPROCESSOR_FLAGS,
@@ -2341,6 +2344,7 @@ void ToolChain::AddKitsuneCompilerArgs(const ArgList &Args,
     case TTID::Hip:
       AddKitsuneHipCommonArgs(Args, CmdArgs);
       ExtractArgsFromString(KITSUNE_HIP_EXTRA_COMPILER_FLAGS, CmdArgs, Args);
+<<<<<<< HEAD
       return;
     case TTID::Lambda:
       AddKitsuneLambdaCommonArgs(Args, CmdArgs);
@@ -2353,6 +2357,12 @@ void ToolChain::AddKitsuneCompilerArgs(const ArgList &Args,
       return;
     case TTID::OpenCilk:
       AddKitsuneOpenCilkCommonArgs(Args, CmdArgs);
+=======
+      break;
+    case llvm::TapirTargetID::GPU:
+      break;
+    case llvm::TapirTargetID::OpenCilk:
+>>>>>>> 82193e08056a (GPU reductions via stripmining pass working)
       ExtractArgsFromString(KITSUNE_OPENCILK_EXTRA_COMPILER_FLAGS, CmdArgs,
                             Args);
       return;
@@ -2551,6 +2561,7 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
     case TTID::Hip:
       AddKitsuneHipLinkerArgs(Args, CmdArgs);
       ExtractArgsFromString(KITSUNE_HIP_EXTRA_LINKER_FLAGS, CmdArgs, Args);
+<<<<<<< HEAD
       return;
     case TTID::Lambda:
       AddKitsuneLambdaLinkerArgs(Args, CmdArgs);
@@ -2562,6 +2573,40 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
       return;
     case TTID::OpenCilk:
       AddKitsuneOpenCilkLinkerArgs(Args, CmdArgs);
+=======
+      break;
+    case llvm::TapirTargetID::GPU:
+      break;
+
+    case llvm::TapirTargetID::OpenCilk: {
+      bool StaticOpenCilk = Args.hasArg(options::OPT_static);
+      bool UseAsan = getSanitizerArgs(Args).needsAsanRt();
+
+      // Link the correct Cilk personality fn
+      if (getDriver().CCCIsCXX())
+        CmdArgs.push_back(Args.MakeArgString(getOpenCilkRT(
+            Args,
+            UseAsan ? "opencilk-asan-personality-cpp"
+                    : "opencilk-personality-cpp",
+            StaticOpenCilk ? ToolChain::FT_Static : ToolChain::FT_Shared)));
+      else
+        CmdArgs.push_back(Args.MakeArgString(getOpenCilkRT(
+            Args,
+            UseAsan ? "opencilk-asan-personality-c" : "opencilk-personality-c",
+            StaticOpenCilk ? ToolChain::FT_Static : ToolChain::FT_Shared)));
+
+      // Link the opencilk runtime.  We do this after linking the personality
+      // function, to ensure that symbols are resolved correctly when using
+      // static linking.
+      CmdArgs.push_back(Args.MakeArgString(getOpenCilkRT(
+          Args, UseAsan ? "opencilk-asan" : "opencilk",
+          StaticOpenCilk ? ToolChain::FT_Static : ToolChain::FT_Shared)));
+
+      // Add to the executable's runpath the default directory containing
+      // OpenCilk runtime.
+      addOpenCilkRuntimeRunPath(*this, Args, CmdArgs, Triple);
+
+>>>>>>> 82193e08056a (GPU reductions via stripmining pass working)
       ExtractArgsFromString(KITSUNE_OPENCILK_EXTRA_LINKER_FLAGS, CmdArgs, Args);
       return;
     case TTID::OpenMP:

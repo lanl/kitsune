@@ -5233,7 +5233,7 @@ def NonString : InheritableAttr {
 def KitsuneReduction : InheritableAttr {
   let Spellings = [Clang<"kitsune_reduction">];
   let Subjects = SubjectList<[FunctionLike]>;
-  let Documentation = [StrandMallocDocs];
+  let Documentation = [TapirRTDocs];
 }
 
 def TapirTarget : StmtAttr {
@@ -5254,9 +5254,9 @@ def TapirTarget : StmtAttr {
                              ErrorDiag, "'parallel' statements">;
   let Args = [
     EnumArgument<"TapirTargetAttrType", "TapirTargetAttrTy", /*is_string=*/ true,
-                 ["nolo", "serial", "cuda", "hip", "opencilk", "openmp",
+                 ["nolo", "serial", "cuda", "hip", "gpu",  "opencilk", "openmp",
                   "qthreads", "realm"],
-                 ["Nolo", "Serial", "Cuda", "Hip", "OpenCilk", "OpenMP",
+                 ["Nolo", "Serial", "Cuda", "Hip", "GPU", "OpenCilk", "OpenMP",
                   "Qthreads", "Realm"],
                  0>
   ];

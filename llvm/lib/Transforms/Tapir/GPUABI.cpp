@@ -12,11 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#pragma warning "GPUABI has been deprecated"
-#if 0
-
 #include "llvm/Transforms/Tapir/GPUABI.h"
-#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -25,12 +21,9 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/Vectorize.h"
-#include "llvm/Support/SmallVectorMemoryBuffer.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/MC/TargetRegistry.h"
-#include <sstream>
 #include <fstream>
 
 using namespace llvm;
@@ -45,11 +38,16 @@ static cl::opt<bool>
           "(default=false)"));
 
 Value *GPUABI::lowerGrainsizeCall(CallInst *GrainsizeCall) {
-  Value *Grainsize = ConstantInt::get(GrainsizeCall->getType(), 8);
+  IRBuilder<> BH(GrainsizeCall); 
+  auto *M = GrainsizeCall->getModule(); 
+  Type *LLVMInt64Ty = Type::getInt64Ty(M->getContext());
+  Value *GS = BH.CreateCall(M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty)); 
+  //FunctionCallee GGS = M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty);
 
   // Replace uses of grainsize intrinsic call with this grainsize value.
-  GrainsizeCall->replaceAllUsesWith(Grainsize);
-  return Grainsize;
+  //GrainsizeCall->setCalledFunction(GGS); 
+  GrainsizeCall->replaceAllUsesWith(GS); 
+  return GS;
 }
 
 void GPUABI::lowerSync(SyncInst &SI) {
@@ -61,8 +59,9 @@ void GPUABI::postProcessOutlinedTask(llvm::Function&, llvm::Instruction*, llvm::
 void GPUABI::preProcessRootSpawner(llvm::Function&, BasicBlock *TFEntry){}
 void GPUABI::postProcessRootSpawner(llvm::Function&, BasicBlock *TFEntry){}
 
-void GPUABI::preProcessFunction(Function &F, TaskInfo &TI,
+bool GPUABI::preProcessFunction(Function &F, TaskInfo &TI,
                                  bool OutliningTapirLoops) {
+  return false;
 }
 
 void GPUABI::postProcessFunction(Function &F, bool OutliningTapirLoops) {
@@ -104,15 +103,12 @@ LLVMLoop::LLVMLoop(Module &M)
 
   // Insert runtime-function declarations in LLVM host modules.
   Type *LLVMInt32Ty = Type::getInt32Ty(LLVMM.getContext());
-  Type *LLVMInt64Ty = Type::getInt64Ty(LLVMM.getContext());
   GetThreadIdx = LLVMM.getOrInsertFunction("gtid", LLVMInt32Ty);
-  Function* getid = LLVMM.getFunction("gtid");
+  
 
   Type *VoidTy = Type::getVoidTy(M.getContext());
-  Type *VoidPtrTy = Type::getInt8PtrTy(M.getContext());
+  Type *VoidPtrTy = PointerType::getUnqual(M.getContext());
   Type *VoidPtrPtrTy = VoidPtrTy->getPointerTo();
-  Type *Int8Ty = Type::getInt8Ty(M.getContext());
-  Type *Int32Ty = Type::getInt32Ty(M.getContext());
   Type *Int64Ty = Type::getInt64Ty(M.getContext());
   GPUInit = M.getOrInsertFunction("initRuntime", VoidTy);
   GPULaunchKernel = M.getOrInsertFunction("launchBCKernel", VoidPtrTy, VoidPtrTy, Int64Ty, VoidPtrPtrTy, Int64Ty);
@@ -184,17 +180,12 @@ unsigned LLVMLoop::getLimitArgIndex(const Function &F, const ValueSet &Args)
 
 void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
                                    ValueToValueMapTy &VMap) {
-  LLVMContext &Ctx = M.getContext();
-  Type *Int8Ty = Type::getInt8Ty(Ctx);
-  Type *Int32Ty = Type::getInt32Ty(Ctx);
-  //Type *Int64Ty = Type::getInt64Ty(Ctx);
-  //Type *VoidPtrTy = Type::getInt8PtrTy(Ctx);
   Task *T = TL.getTask();
   Loop *L = TL.getLoop();
 
-
   BasicBlock *Entry = cast<BasicBlock>(VMap[L->getLoopPreheader()]);
   BasicBlock *Header = cast<BasicBlock>(VMap[L->getHeader()]);
+  BasicBlock *Latch = cast<BasicBlock>(VMap[L->getLoopLatch()]);
   BasicBlock *Exit = cast<BasicBlock>(VMap[TL.getExitBlock()]);
   PHINode *PrimaryIV = cast<PHINode>(VMap[TL.getPrimaryInduction().first]);
   Value *PrimaryIVInput = PrimaryIV->getIncomingValueForBlock(Entry);
@@ -208,10 +199,18 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   // Get the thread ID for this invocation of Helper.
   IRBuilder<> B(Entry->getTerminator());
   Value *ThreadIdx = B.CreateCall(GetThreadIdx);
-  //Value *BlockIdx = B.CreateCall(GetBlockIdx, ConstantInt::get(Int32Ty, 0));
-  //Value *BlockDim = B.CreateCall(GetBlockDim, ConstantInt::get(Int32Ty, 0));
   Value *ThreadID = B.CreateIntCast(ThreadIdx, PrimaryIV->getType(), false);
 
+  // Loop should be handled in stripmining, here we just remove the loop by setting it to a jump
+  BranchInst *BI = cast<BranchInst>(Latch->getTerminator()); 
+  if(BI->getSuccessor(0) == Exit)
+    BI->setCondition(ConstantInt::get(BI->getCondition()->getType(), true));
+  else 
+    BI->setCondition(ConstantInt::get(BI->getCondition()->getType(), false));
+
+  //AV.push_back(ValueAsMetadata::get(ConstantInt::get(Type::getInt32Ty(LLVMCtx),
+  //                                                   1)));
+   
 
   Function *Helper = Out.Outline;
   Helper->setName("kitsune_kernel");
@@ -225,19 +224,10 @@ void LLVMLoop::postProcessOutline(TapirLoopInfo &TL, TaskOutlineInfo &Out,
   // the loop limit with stride 1.  The End argument encodes the loop limit.
   // Get end and grainsize arguments
   Argument *End;
-  Value *Grainsize;
   {
-    auto OutlineArgsIter = Helper->arg_begin();
+    auto *OutlineArgsIter = Helper->arg_begin();
     // End argument is the first LC arg.
     End = &*OutlineArgsIter;
-
-    // Get the grainsize value, which is either constant or the third LC arg.
-    // ReplaceInstWithInst(gep, GetElementPtrInst::Create(
-    if (unsigned ConstGrainsize = TL.getGrainsize())
-      Grainsize = ConstantInt::get(PrimaryIV->getType(), ConstGrainsize);
-    else
-      // Grainsize argument is the third LC arg.
-      Grainsize = &*++(++OutlineArgsIter);
   }
   Value *Cond = B.CreateICmpUGE(ThreadID, End);
 
@@ -261,9 +251,8 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                       DominatorTree &DT) {
   LLVMContext &Ctx = M.getContext();
   Type *Int8Ty = Type::getInt8Ty(Ctx);
-  Type *Int32Ty = Type::getInt32Ty(Ctx);
   Type *Int64Ty = Type::getInt64Ty(Ctx);
-  Type *VoidPtrTy = Type::getInt8PtrTy(Ctx);
+  PointerType *VoidPtrTy = PointerType::getUnqual(Ctx);
 
   LLVM_DEBUG(dbgs() << "Running processOutlinedLoopCall: " << LLVMM);
   Function *Parent = TOI.ReplCall->getFunction();
@@ -277,7 +266,6 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   // Compile the kernel
   //LLVMM.getFunctionList().remove(TOI.Outline);
   //TOI.Outline->eraseFromParent();
-  LLVMContext &LLVMCtx = LLVMM.getContext();
 
   ValueToValueMapTy VMap;
   // We recursively add definitions and declarations to the device module
@@ -356,12 +344,9 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   PassManager->add(createReassociatePass());
   PassManager->add(createGVNPass());
   PassManager->add(createCFGSimplificationPass());
-  PassManager->add(createLoopVectorizePass());
-  PassManager->add(createSLPVectorizerPass());
   //PassManager->add(createBreakCriticalEdgesPass());
   //PassManager->add(createConstantPropagationPass());
   PassManager->add(createDeadCodeEliminationPass());
-  PassManager->add(createDeadStoreEliminationPass());
   //PassManager->add(createInstructionCombiningPass());
   PassManager->add(createCFGSimplificationPass());
   PassManager->add(createDeadCodeEliminationPass());
@@ -391,9 +376,6 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
                                  GlobalValue::PrivateLinkage, LLVMBC,
                                  "gpu_" + Twine("kitsune_kernel"));
 
-  Value *KernelID = ConstantInt::get(Int32Ty, MyKernelID);
-  Value *LLVMPtr = B.CreateBitCast(LLVMGlobal, VoidPtrTy);
-  Type *VoidPtrPtrTy = VoidPtrTy->getPointerTo();
 
   Constant *kernelSize = ConstantInt::get(Int64Ty,
     LLVMGlobal->getInitializer()->getType()->getArrayNumElements());
@@ -422,4 +404,3 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
 }
 
-#endif

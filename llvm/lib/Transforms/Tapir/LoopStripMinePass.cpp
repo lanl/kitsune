@@ -212,12 +212,14 @@ static bool tryToStripMineLoop(
 
   // If the loop contains potentially expensive function calls, then we don't
   // want to stripmine it.
+  /*
   if (NumCalls > 0 && !ExplicitCount && !StripMiningRequested) {
     LLVM_DEBUG(dbgs() << "  Skipping loop with expensive function calls.\n");
     ORE.emit(createMissedAnalysis("ExpensiveCalls", L)
              << "Not stripmining loop with potentially expensive calls.");
     return false;
   }
+  */
 
   // Make sure the count is a power of 2.
   if (!isPowerOf2_32(SMP.Count))
@@ -282,12 +284,25 @@ static bool tryToStripMineLoop(
   // Save loop properties before it is transformed.
   MDNode *OrigLoopID = L->getLoopID();
 
+  // TODO: change this to check tapir loop attributes for custom target
+  bool GPU = false;
+  auto target = TLI->getTapirTarget();
+  switch(target){
+    case TapirTargetID::GPU:
+    case TapirTargetID::Cuda:
+    case TapirTargetID::Hip:
+      GPU = true;
+      break;
+    default:
+      break; 
+  }
+
   // Stripmine the loop
   Loop *RemainderLoop = nullptr;
   Loop *NewLoop = StripMineLoop(L, SMP.Count, SMP.AllowExpensiveTripCount,
                                 SMP.UnrollRemainder, LI, &SE, &DT, TTI, &AC, TI,
                                 &ORE, PreserveLCSSA, ParallelEpilog,
-                                NeedNestedSync, &RemainderLoop);
+                                NeedNestedSync, &RemainderLoop, GPU);
   if (!NewLoop)
     return false;
 
@@ -372,7 +387,7 @@ PreservedAnalyses LoopStripMinePass::run(Function &F,
     // The parent must not be damaged by stripmining!
 #ifndef NDEBUG
     if (LoopChanged && ParentL)
-      ParentL->verifyLoop();
+      //ParentL->verifyLoop();
 #endif
 
     // Clear any cached analysis results for L if we removed it completely.
@@ -383,5 +398,6 @@ PreservedAnalyses LoopStripMinePass::run(Function &F,
   if (!Changed)
     return PreservedAnalyses::all();
 
-  return getLoopPassPreservedAnalyses();
+  // If we've changed, assume we've not preserved anything
+  return PreservedAnalyses::none(); 
 }

@@ -444,6 +444,7 @@ list(JOIN KITSUNE_ENABLED_LANGS_STR " " KITSUNE_ENABLED_LANGS_STR)
 # affects clang. And we have ensured that kitsune is configured before clang.
 set(KITSUNE_CUDA_ENABLED OFF CACHE INTERNAL "Enable 'cuda' tapir target" FORCE)
 set(KITSUNE_HIP_ENABLED OFF CACHE INTERNAL "Enable 'hip' tapir target" FORCE)
+set(KITSUNE_GPU_ENABLED OFF CACHE INTERNAL "Enable 'gpu' tapir target" FORCE)
 set(KITSUNE_LAMBDA_ENABLED OFF CACHE INTERNAL "Enable 'lambda' tapir target" FORCE)
 set(KITSUNE_OMPTASK_ENABLED OFF CACHE INTERNAL "Enable 'omptask' tapir target" FORCE)
 set(KITSUNE_OPENCILK_ENABLED OFF CACHE INTERNAL "Enable 'opencilk' tapir target" FORCE)
