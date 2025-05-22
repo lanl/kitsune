@@ -41,7 +41,7 @@ Value *GPUABI::lowerGrainsizeCall(CallInst *GrainsizeCall) {
   IRBuilder<> BH(GrainsizeCall); 
   auto *M = GrainsizeCall->getModule(); 
   Type *LLVMInt64Ty = Type::getInt64Ty(M->getContext());
-  Value *GS = BH.CreateCall(M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty)); 
+  Value *GS = BH.CreateCall(M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty, LLVMInt64Ty), {GrainsizeCall->getArgOperand(0)}); 
   //FunctionCallee GGS = M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty);
 
   // Replace uses of grainsize intrinsic call with this grainsize value.
