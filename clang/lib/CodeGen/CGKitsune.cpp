@@ -59,6 +59,7 @@
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "llvm/IR/ValueMap.h"
+#include "llvm/IR/FixedPointBuilder.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -328,6 +329,11 @@ void CodeGenFunction::EmitForallStmt(const ForallStmt &S,
   // Evaluate the initialization before the loop.
   EmitStmt(S.getInit());
 
+  // We assume that the boolean is a binary operator and pre-compute RHS
+  auto* BO = dyn_cast<BinaryOperator>(S.getCond()); 
+  llvm::Value *RHS = EmitScalarExpr(BO->getRHS()); 
+
+
   // In a parallel loop there will always be a condition block
   // so there is no need to test
   JumpDest Condition = getJumpDestInCurrentScope("forall.cond");
@@ -366,7 +372,59 @@ void CodeGenFunction::EmitForallStmt(const ForallStmt &S,
 
   // C99 6.8.5p2/p4: The first substatement is executed if the expression
   // compares unequal to 0.  The condition must be a scalar type.
-  llvm::Value *BoolCondVal = EvaluateExprAsBool(S.getCond());
+  
+  //llvm::Value *BoolCondVal = EvaluateExprAsBool(S.getCond());
+  llvm::Value *LHS = EmitScalarExpr(BO->getLHS()); 
+  QualType LHSTy = BO->getLHS()->getType();
+  llvm::Value *BoolCondVal;
+  if (LHSTy->hasSignedIntegerRepresentation()) {
+    switch(BO->getOpcode()) {
+      case BO_GT:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_SGT, LHS, RHS, "cmp");
+        break;
+      case BO_GE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_SGE, LHS, RHS, "cmp");
+        break;
+      case BO_LT:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_SLT, LHS, RHS, "cmp");
+        break;
+      case BO_LE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_SLE, LHS, RHS, "cmp");
+        break;
+      case BO_NE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_NE, LHS, RHS, "cmp");
+        break;
+      case BO_EQ:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_EQ, LHS, RHS, "cmp");
+        break;
+      default:
+        llvm_unreachable("Invalid comparison in forall");
+    }
+  } else {
+    switch(BO->getOpcode()){
+      case BO_GT:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_UGT, LHS, RHS, "cmp");
+        break;
+      case BO_GE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_UGE, LHS, RHS, "cmp");
+        break;
+      case BO_LT:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_ULT, LHS, RHS, "cmp");
+        break;
+      case BO_LE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_ULE, LHS, RHS, "cmp");
+        break;
+      case BO_NE:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_NE, LHS, RHS, "cmp");
+        break;
+      case BO_EQ:
+        BoolCondVal = Builder.CreateICmp(llvm::ICmpInst::ICMP_EQ, LHS, RHS, "cmp");
+        break;
+      default:
+        llvm_unreachable("Invalid comparison in forall");
+    }
+  }
+
   Builder.CreateCondBr(
       BoolCondVal, Detach, Sync.getBlock(),
       createProfileWeightsForLoop(S.getCond(), getProfileCount(S.getBody())));
