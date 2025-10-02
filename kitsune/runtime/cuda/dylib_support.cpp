@@ -114,7 +114,7 @@ bool __kitcuda_load_symbols() {
   DLSYM_LOAD(cuFuncGetAttribute);
 
   /* Context management */
-  DLSYM_LOAD(cuCtxCreate_v3);
+  DLSYM_LOAD(cuCtxCreate_v4);
   DLSYM_LOAD(cuDevicePrimaryCtxRetain);
   DLSYM_LOAD(cuCtxGetCurrent);
   DLSYM_LOAD(cuCtxSetCurrent);

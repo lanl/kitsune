@@ -72,6 +72,7 @@
 bool _kitcuda_initialized = false;
 int _kitcuda_device_id = -1;
 CUdevice _kitcuda_device = -1;
+CUmemLocation _kitcuda_mem_location; 
 CUcontext _kitcuda_context;
 
 // TODO: We currently don't use these values within the runtime but
@@ -140,6 +141,9 @@ bool __kitcuda_initialize() {
   // to GPU location within a node (e.g. NUMA-ness).
   if (!__kitrt_get_env_value("KITCUDA_DEVICE_ID", _kitcuda_device_id))
     _kitcuda_device_id = 0;
+
+  _kitcuda_mem_location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  _kitcuda_mem_location.id = _kitcuda_device_id; 
 
   assert(_kitcuda_device_id < device_count &&
          "kitcuda: KITCUDA_DEVICE_ID value exceeds available number"

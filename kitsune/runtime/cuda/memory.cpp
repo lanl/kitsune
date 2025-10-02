@@ -79,9 +79,9 @@ __kitcuda_mem_alloc_managed(size_t size) {
   // to occur on first touch -- thus our 'prefetch' status here is a bit
   // misleading (technically we are not prefetched to either host nor device).
   CU_SAFE_CALL(cuMemAdvise_p(devp, size, CU_MEM_ADVISE_SET_ACCESSED_BY,
-                             _kitcuda_device));
+                             _kitcuda_mem_location));
   CU_SAFE_CALL(cuMemAdvise_p(devp, size, CU_MEM_ADVISE_SET_PREFERRED_LOCATION,
-                             _kitcuda_device));
+                             _kitcuda_mem_location));
 
   int enable = 1;
   CU_SAFE_CALL(
@@ -267,7 +267,7 @@ void *__kitcuda_mem_gpu_prefetch(void *vp, void *opaque_stream) {
       // CU_MEM_ADVISE_SET_READ_MOSTLY advice flag.
       CU_SAFE_CALL(cuMemAdvise_p((CUdeviceptr)vp, size,
                                  CU_MEM_ADVISE_SET_PREFERRED_LOCATION,
-                                 _kitcuda_device));
+                                 _kitcuda_mem_location));
 
       // Issue a prefetch request on the provided stream.  If the given
       // stream is null, create a new stream and return it. Once issued
@@ -280,7 +280,7 @@ void *__kitcuda_mem_gpu_prefetch(void *vp, void *opaque_stream) {
       else
         cu_stream = (CUstream)__kitcuda_get_thread_stream();
 
-      CU_SAFE_CALL(cuMemPrefetchAsync_p((CUdeviceptr)vp, size, _kitcuda_device,
+      CU_SAFE_CALL(cuMemPrefetchAsync_p((CUdeviceptr)vp, size, _kitcuda_mem_location, 0,
                                         cu_stream));
       _kitcuda_mem_alloc_mutex.lock();
       __kitrt_mark_mem_prefetched(vp);
@@ -322,9 +322,12 @@ void *__kitcuda_mem_host_prefetch(void *vp, void *opaque_stream) {
       //
       // TODO: A lot of work needs to go into seeing if we can be
       // smarter about device- and host-side prefetching.
+      CUmemLocation cpu;
+      cpu.type = CU_MEM_LOCATION_TYPE_HOST;
+      cpu.id = 0; 
       CU_SAFE_CALL(cuMemAdvise_p((CUdeviceptr)vp, size,
                                  CU_MEM_ADVISE_SET_PREFERRED_LOCATION,
-                                 CU_DEVICE_CPU));
+                                 cpu));
       // Issue a prefetch request on the stream associated with the
       // calling thread. Once issued go ahead and mark the memory as
       // no long being prefetched to the device/GPU.  This "mark" does
@@ -336,7 +339,7 @@ void *__kitcuda_mem_host_prefetch(void *vp, void *opaque_stream) {
       else
         cu_stream = (CUstream)__kitcuda_get_thread_stream();
 
-      CU_SAFE_CALL(cuMemPrefetchAsync_p((CUdeviceptr)vp, size, CU_DEVICE_CPU,
+      CU_SAFE_CALL(cuMemPrefetchAsync_p((CUdeviceptr)vp, size, cpu, 0,
                                         cu_stream));
       __kitrt_set_mem_prefetch(vp, false);
       return cu_stream;
