@@ -1,21 +1,30 @@
-exes=l2_serial l2_opencilk l2_gpu l2_serial l2_openmp l2_cuda
+exes=l2_opencilk l2_gpu triangle_opencilk triangle_gpu triangle_serial
 
 all: $(exes)
 
-l2_serial: l2.c
-	clang $< -o $@ -O2 -fuse-ld=lld -fPIC -o l2_serial -ftapir=serial -lm -lllvm-gpu -lomp
+%_serial: %.c
+	clang $< -o $@ -O2 -fuse-ld=lld -fPIC -ftapir=serial -lm -lllvm-gpu -lomp #-mllvm -debug-only="loop-stripmine"
 
-l2_opencilk: l2.c
-	clang $< -o $@ -O2 -fuse-ld=lld -fPIC -o l2_opencilk -ftapir=opencilk -lm -lllvm-gpu -lomp -mllvm -debug-only="loop-stripmine"
+%_opencilk: %.c
+	clang $< -o $@ -O2 -fuse-ld=lld -fPIC -ftapir=opencilk -lm -lllvm-gpu -lomp #-mllvm -debug-only="loop-stripmine"
 
-l2_gpu: l2.c
-	clang $< -o $@ -O2 -fPIC -o l2_gpu -ftapir=gpu -lm -lllvm-gpu -lomp -mllvm -debug-only="loop-stripmine"
+%_opencilk.ll: %.c
+	clang $< -o $@ -O2 -fPIC -ftapir=opencilk -mllvm -debug-only="loop-stripmine" -S -emit-llvm
 
-l2_cuda: l2.c
-	kitcc $< -o $@ -O2 -fPIC -o l2_cuda -ftapir=cuda -lm -lllvm-gpu -lomp -v -mllvm -cuabi-arch=sm_75
+%_gpu: %.c
+	clang $< -o $@ -O2 -fPIC -ftapir=gpu -lm -lllvm-gpu -lomp #-mllvm -debug-only="loop-stripmine"
 
-l2_openmp: l2_openmp.c
-	clang l2_openmp.c -fopenmp -O2 -o l2_openmp -lm -lgomp
+%_gpu.ll: %.c
+	clang $< -o $@ -O2 -fPIC -ftapir=gpu -mllvm -debug-only="loop-stripmine" -S -emit-llvm
+
+%_cuda: %.c
+	kitcc $< -o $@ -O2 -fPIC -ftapir=cuda -lm -lllvm-gpu -lomp -v -mllvm -cuabi-arch=sm_75
+
+%_stripmined.ll: %.c 
+	clang $< -o $@ -O1 -ftapir=none -S -emit-llvm -mllvm -stripmine-loop
+
+%_openmp: %_openmp.c
+	clang $< -fopenmp -O2 -o $@ -lm 
 
 clean: 
 	rm -f $(exes) l2_stripmined.ll l2 l2.ll

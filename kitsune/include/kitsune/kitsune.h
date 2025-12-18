@@ -14,8 +14,9 @@
 #if defined(reduction)
 #warning found reduction definition: try puttin kitsune lower in include order
 #else
-#define reduction __attribute__((noinline, kitsune_reduction))
+#define reduction __attribute__((optnone, noinline, kitsune_reduction))
 #endif
+
 
 #if defined(spawn)
 // FIXME KITSUNE: Should this be an error instead of a warning?

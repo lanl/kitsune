@@ -1718,7 +1718,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // accumulate reductions in epilog loop
   LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
 
-  std::vector<std::tuple<CallInst*, Value* , Value*, Type*>> redMap; 
+  std::vector<std::tuple<CallInst*, Value* , Value*, Type*, Value*>> redMap; 
   // TODO: Modify the strip mining outer loop to be smaller: currently we are
   // stack allocating n/2048 reduction values.
   // TODO: Initialize local reductions with unit values
@@ -1742,6 +1742,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // TODO: generic allocation/free calls
     auto ci = pair.first; 
     auto ptr = ci->getArgOperand(0); 
+    auto unit = ci->getArgOperand(2); 
     auto ty = pair.second; 
     auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
     auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(ty))); 
@@ -1752,7 +1753,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     auto lptr = BH.CreateBitCast(
       BH.CreateGEP(ty, al, NewIdx), 
       ptr->getType());                             
-    redMap.push_back(std::make_tuple(ci, ptr, al, ty)); 
+    redMap.push_back(std::make_tuple(ci, ptr, al, ty, unit)); 
     // Assume there is more than one element, and
     // use the first element for the first iteration of the loop.
     // roughly: 
@@ -1770,7 +1771,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     //   }
     //   for( j ∈ j_k_m .. n )
     //     reduce(localred+m, body(j)); 
-    //   }
+    //   
     //   for(k ∈ 0..m) 
     //     reduce(&red, localred[k]); 
     //
@@ -1801,28 +1802,33 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   if(!reductions.empty()){
     // Peel the first iteration of the loop and replace the reduction calls in
     // the peeled code with stores
+    // Can't do this in general if the reduction is conditional
     ValueToValueMapTy VMap; 
-    peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA, VMap); 
-    SmallVector<Instruction*, 4> cis;
+    //peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA, VMap); 
+    SmallVector<Instruction*, 4> CIS;
     for(auto &BB : NewLoop->blocks()){
-      if(!L->contains(BB)){ // better way?
-        for(auto &I : *BB){
-          if(auto *CI = dyn_cast<CallInst>(&I)){
-            auto *f = CI->getCalledFunction(); 
-            if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
-              IRBuilder<> pb(&I); 
-              pb.CreateStore(CI->getArgOperand(1), CI->getArgOperand(0)); 
-              cis.push_back(&I); 
-              f->removeFnAttr(Attribute::NoInline); 
-            }
+      // We find the location that we reduce into and create a store of unit
+      // TODO: Get unit value for reduction
+      for(auto &I : *BB){
+        if(auto *CI = dyn_cast<CallInst>(&I)){
+          auto *F = CI->getCalledFunction(); 
+          if(F->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+            // this must be defined in the outer parallel loop but before the inner loop 
+            IRBuilder<> PB(dyn_cast<Instruction>(CI->getArgOperand(0))->getNextNode()); 
+            PB.CreateStore(CI->getArgOperand(2), CI->getArgOperand(0)); 
+            CIS.push_back(&I); 
+            F->removeFnAttr(Attribute::NoInline); 
+            F->removeFnAttr(Attribute::OptimizeNone); 
           }
         }
       }
     }
     
-    for(auto &I : cis){
+    /*
+    for(auto &I : CIS){
       I->eraseFromParent();  
     }
+    */
 
     Instruction* term = LatchExit->getTerminator(); 
     BasicBlock *PostSync = term->getSuccessor(0);
@@ -1843,13 +1849,13 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // For each reduction, get the allocated thread local reduced values and
     // reduce them. 
     for(auto& kv : redMap){
-      const auto [ ci, ptr, al, ty ] = kv; 
+      const auto [ ci, ptr, al, ty, unit ] = kv; 
       auto lptr = BB.CreateBitCast(
         BB.CreateGEP(ty, al, Idx), 
         ptr->getType());                             
       auto x = BB.CreateLoad(ty, lptr); 
       BB.SetCurrentDebugLocation(ci->getDebugLoc()); 
-      BB.CreateCall(ci->getCalledFunction(), { ptr, x }); 
+      BB.CreateCall(ci->getCalledFunction(), { ptr, x , unit}); 
     }
     Value *IdxAdd =
         BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),

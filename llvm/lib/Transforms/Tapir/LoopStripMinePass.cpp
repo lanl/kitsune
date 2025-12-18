@@ -152,12 +152,12 @@ static bool tryToStripMineLoop(
 
   // If the loop size is unknown, then we cannot compute a stripmining count for
   // it.
-  if (!ExplicitCount && UnknownSize) {
-    LLVM_DEBUG(dbgs() << "  Not stripmining loop with unknown size.\n");
-    ORE.emit(createMissedAnalysis("UnknownSize", L)
-             << "Cannot stripmine loop with unknown size.");
-    return false;
-  }
+  //if (!ExplicitCount && UnknownSize) {
+  //  LLVM_DEBUG(dbgs() << "  Not stripmining loop with unknown size.\n");
+  //  ORE.emit(createMissedAnalysis("UnknownSize", L)
+  //           << "Cannot stripmine loop with unknown size.");
+  //  return false;
+ // }
 
   // If the loop size is enormous, then we might want to use a stripmining count
   // of 1 for it.
@@ -288,6 +288,9 @@ static bool tryToStripMineLoop(
   bool GPU = false;
   auto target = TLI->getTapirTarget();
   switch(target){
+    // We don't want to stripmine for serial targets
+    case TapirTargetID::Serial:
+      return false; 
     case TapirTargetID::GPU:
     case TapirTargetID::Cuda:
     case TapirTargetID::Hip:
@@ -320,6 +323,81 @@ static bool tryToStripMineLoop(
   NewHints.setAlreadyStripMined();
 
   return true;
+}
+
+namespace {
+
+class LoopStripMine : public LoopPass {
+public:
+  static char ID; // Pass ID, replacement for typeid
+
+  std::optional<unsigned> ProvidedCount;
+
+  LoopStripMine(std::optional<unsigned> Count = std::nullopt)
+      : LoopPass(ID), ProvidedCount(Count) {
+    initializeLoopStripMinePass(*PassRegistry::getPassRegistry());
+  }
+
+  bool runOnLoop(Loop *L, LPPassManager &LPM) override {
+    if (skipLoop(L))
+      return false;
+
+    Function &F = *L->getHeader()->getParent();
+
+    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
+    auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+    LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+    TaskInfo *TI = &getAnalysis<TaskInfoWrapperPass>().getTaskInfo();
+    ScalarEvolution &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+    const TargetTransformInfo &TTI =
+        getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
+    auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
+    // For the old PM, we can't use OptimizationRemarkEmitter as an analysis
+    // pass.  Function analyses need to be preserved across loop transformations
+    // but ORE cannot be preserved (see comment before the pass definition).
+    OptimizationRemarkEmitter ORE(&F);
+    bool PreserveLCSSA = mustPreserveAnalysisID(LCSSAID);
+
+    bool ret = tryToStripMineLoop(L, DT, LI, SE, TTI, AC, TI, ORE, &TLI,
+                              PreserveLCSSA, ProvidedCount);
+    if(!ret){
+      ORE.emit(DiagnosticInfoOptimizationFailure(
+                    DEBUG_TYPE, "FailedRequestedSpawning",
+                    L->getStartLoc(), L->getHeader())
+                << "Tapir loop not stripmined");
+    }
+    return ret;
+  }
+
+  /// This transformation requires natural loop information & requires that
+  /// loop preheaders be inserted into the CFG...
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<AssumptionCacheTracker>();
+    AU.addRequired<TargetTransformInfoWrapperPass>();
+    AU.addRequired<TargetLibraryInfoWrapperPass>();
+    getLoopAnalysisUsage(AU);
+  }
+};
+
+} // end anonymous namespace
+
+char LoopStripMine::ID = 0;
+
+INITIALIZE_PASS_BEGIN(LoopStripMine, "loop-stripmine", "Stripmine Tapir loops",
+                      false, false)
+INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
+INITIALIZE_PASS_DEPENDENCY(LoopPass)
+INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
+INITIALIZE_PASS_END(LoopStripMine, "loop-stripmine", "Stripmine Tapir loops",
+                    false, false)
+
+Pass *llvm::createLoopStripMinePass(int Count) {
+  // TODO: It would make more sense for this function to take the optionals
+  // directly, but that's dangerous since it would silently break out of tree
+  // callers.
+  return new LoopStripMine(Count == -1 ? std::nullopt
+                                       : std::optional<unsigned>(Count));
 }
 
 PreservedAnalyses LoopStripMinePass::run(Function &F,
