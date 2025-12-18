@@ -41,13 +41,17 @@ Value *GPUABI::lowerGrainsizeCall(CallInst *GrainsizeCall) {
   IRBuilder<> BH(GrainsizeCall); 
   auto *M = GrainsizeCall->getModule(); 
   Type *LLVMInt64Ty = Type::getInt64Ty(M->getContext());
-  Value *GS = BH.CreateCall(M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty, LLVMInt64Ty), {GrainsizeCall->getArgOperand(0)}); 
+  Type *LLVMInt32Ty = Type::getInt64Ty(M->getContext());
+  // we have to cast 
+  Value *GSO = BH.CreateIntCast(GrainsizeCall->getOperand(0), LLVMInt64Ty, false);
+  Value *GS = BH.CreateCall(M->getOrInsertFunction("gpuGridSize", LLVMInt32Ty, LLVMInt64Ty), {GSO}); 
+  Value *GSN = BH.CreateIntCast(GS, GrainsizeCall->getType(), false);
   //FunctionCallee GGS = M->getOrInsertFunction("gpuGridSize", LLVMInt64Ty);
 
   // Replace uses of grainsize intrinsic call with this grainsize value.
   //GrainsizeCall->setCalledFunction(GGS); 
-  GrainsizeCall->replaceAllUsesWith(GS); 
-  return GS;
+  GrainsizeCall->replaceAllUsesWith(GSN); 
+  return GSN;
 }
 
 void GPUABI::lowerSync(SyncInst &SI) {
@@ -398,7 +402,8 @@ void LLVMLoop::processOutlinedLoopCall(TapirLoopInfo &TL, TaskOutlineInfo &TOI,
 
   Value* argsPtr = B.CreateConstInBoundsGEP2_32(arrayType, argArray, 0, 0); 
   Value* bcPtr = B.CreateConstInBoundsGEP2_32(LLVMGlobal->getValueType(), LLVMGlobal, 0, 0); 
-  Value* stream = B.CreateCall(GPULaunchKernel, { bcPtr, kernelSize, argsPtr, TripCount });
+  Value *TripCount64 = B.CreateIntCast(TripCount, Int64Ty, true);
+  Value* stream = B.CreateCall(GPULaunchKernel, { bcPtr, kernelSize, argsPtr, TripCount64 });
   B.CreateCall(GPUWaitKernel, stream);
 
   LLVM_DEBUG(dbgs() << "Finished processOutlinedLoopCall: " << M);
