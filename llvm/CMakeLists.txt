@@ -454,7 +454,7 @@ set(KITSUNE_REALM_ENABLED OFF CACHE INTERNAL "Enable 'realm' tapir target" FORCE
 set(KITSUNE_SERIAL_ENABLED ON CACHE INTERNAL "Enable 'serial' tapir target" FORCE)
 
 set(KITSUNE_KNOWN_TAPIR_TARGETS
-  "cuda;hip;lambda;omptask;opencilk;openmp;qthreads;realm;serial"
+  "cuda;hip;gpu;lambda;omptask;opencilk;openmp;qthreads;realm;serial"
   CACHE INTERNAL
   "All known Tapir targets" FORCE)
 
@@ -494,6 +494,8 @@ foreach(target IN LISTS KITSUNE_ENABLED_TAPIR_TARGETS)
     message(FATAL_ERROR "Unknown Tapir target '${target}'")
   endif ()
 endforeach ()
+message(WARNING "CUDA: ${KITSUNE_CUDA_ENABLED}")
+message(WARNING "GPU: ${KITSUNE_GPU_ENABLED}")
 list(SORT KITSUNE_ENABLED_TAPIR_TARGETS_STR)
 list(JOIN KITSUNE_ENABLED_TAPIR_TARGETS_STR " " KITSUNE_ENABLED_TAPIR_TARGETS_STR)
 

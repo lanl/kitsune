@@ -130,8 +130,8 @@ static bool tryToStripMineLoop(
                   "form.\n");
     return false;
   }
-  bool StripMiningRequested =
-      (hasLoopStripmineTransformation(L) == TM_ForcedByUser);
+  //bool StripMiningRequested =
+  //    (hasLoopStripmineTransformation(L) == TM_ForcedByUser);
   TargetTransformInfo::StripMiningPreferences SMP =
     gatherStripMiningPreferences(L, SE, TTI, ProvidedCount);
 
@@ -286,14 +286,16 @@ static bool tryToStripMineLoop(
 
   // TODO: change this to check tapir loop attributes for custom target
   bool GPU = false;
-  auto target = TLI->getTapirTarget();
+
+  TTID target = TGI.hasTTID() ? TGI.getTTID() : TTID::OpenCilk;
+
   switch(target){
     // We don't want to stripmine for serial targets
-    case TapirTargetID::Serial:
+    case TTID::Serial:
+    case TTID::Cuda:
+    case TTID::Hip:
       return false; 
-    case TapirTargetID::GPU:
-    case TapirTargetID::Cuda:
-    case TapirTargetID::Hip:
+    case TTID::GPU:
       GPU = true;
       break;
     default:
@@ -325,88 +327,10 @@ static bool tryToStripMineLoop(
   return true;
 }
 
-namespace {
 
-class LoopStripMine : public LoopPass {
-public:
-  static char ID; // Pass ID, replacement for typeid
-
-  std::optional<unsigned> ProvidedCount;
-
-  LoopStripMine(std::optional<unsigned> Count = std::nullopt)
-      : LoopPass(ID), ProvidedCount(Count) {
-    initializeLoopStripMinePass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnLoop(Loop *L, LPPassManager &LPM) override {
-    if (skipLoop(L))
-      return false;
-
-    Function &F = *L->getHeader()->getParent();
-
-    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
-    auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-    LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-    TaskInfo *TI = &getAnalysis<TaskInfoWrapperPass>().getTaskInfo();
-    ScalarEvolution &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-    const TargetTransformInfo &TTI =
-        getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
-    auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-    // For the old PM, we can't use OptimizationRemarkEmitter as an analysis
-    // pass.  Function analyses need to be preserved across loop transformations
-    // but ORE cannot be preserved (see comment before the pass definition).
-    OptimizationRemarkEmitter ORE(&F);
-    bool PreserveLCSSA = mustPreserveAnalysisID(LCSSAID);
-
-    bool ret = tryToStripMineLoop(L, DT, LI, SE, TTI, AC, TI, ORE, &TLI,
-                              PreserveLCSSA, ProvidedCount);
-    if(!ret){
-      ORE.emit(DiagnosticInfoOptimizationFailure(
-                    DEBUG_TYPE, "FailedRequestedSpawning",
-                    L->getStartLoc(), L->getHeader())
-                << "Tapir loop not stripmined");
-    }
-    return ret;
-  }
-
-  /// This transformation requires natural loop information & requires that
-  /// loop preheaders be inserted into the CFG...
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<TargetTransformInfoWrapperPass>();
-    AU.addRequired<TargetLibraryInfoWrapperPass>();
-    getLoopAnalysisUsage(AU);
-  }
-};
-
-} // end anonymous namespace
-
-char LoopStripMine::ID = 0;
-
-INITIALIZE_PASS_BEGIN(LoopStripMine, "loop-stripmine", "Stripmine Tapir loops",
-                      false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(LoopPass)
-INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_END(LoopStripMine, "loop-stripmine", "Stripmine Tapir loops",
-                    false, false)
-
-Pass *llvm::createLoopStripMinePass(int Count) {
-  // TODO: It would make more sense for this function to take the optionals
-  // directly, but that's dangerous since it would silently break out of tree
-  // callers.
-  return new LoopStripMine(Count == -1 ? std::nullopt
-                                       : std::optional<unsigned>(Count));
-}
-
-PreservedAnalyses LoopStripMinePass::run(Function &F,
-                                         FunctionAnalysisManager &AM) {
-  Module& M  = *F.getParent();
-
-  auto &MAM = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F);
-  const TapirTargetInfo &TGI = *MAM.getCachedResult<TapirTargetAnalysis>(M);
-
+static bool loopStripMineImpl(Function &F,
+                              FunctionAnalysisManager &AM,
+                              TapirTargetInfo &TGI) {
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
   auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
   auto &LI = AM.getResult<LoopAnalysis>(F);
@@ -473,9 +397,29 @@ PreservedAnalyses LoopStripMinePass::run(Function &F,
       LAM->clear(L, LoopName);
   }
 
+  return Changed;
+}
+
+PreservedAnalyses LoopStripMinePass::run(Module &M,
+                                         ModuleAnalysisManager &AM){
+  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  auto &TGI = AM.getResult<TapirTargetAnalysis>(M);
+
+  bool Changed = false;
+
+  for(auto &F: M){
+    if(!F.empty())
+      Changed |= loopStripMineImpl(F, FAM, TGI);
+  }
+
   if (!Changed)
     return PreservedAnalyses::all();
 
+  PreservedAnalyses PA = PreservedAnalyses::none();
   // If we've changed, assume we've not preserved anything
-  return PreservedAnalyses::none(); 
+  PA.preserve<ModuleAnalysisManagerFunctionProxy>();
+  return PA;
+  //return PreservedAnalyses::none(); 
+
 }
+                                          

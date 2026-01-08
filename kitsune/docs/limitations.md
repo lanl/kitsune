@@ -52,3 +52,14 @@ Virtual method calls from within a `forall` loop are not currently allowed.
 _[This suddenly occurred to me but I haven't thought about whether this is an
 actual limitation or not. I just added it here because I thought that it might 
 be - Tarun (08 June 2022)]_
+
+
+## Reductions
+
+Reductions have a number of unchecked ways that they can fail
+
+    - Single word size: because of how clang can unpack structs passed by
+      value, we don't currently have a way to generalize the reduction approach
+      to handle reductions of structs.
+
+

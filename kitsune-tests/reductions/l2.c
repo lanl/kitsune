@@ -10,14 +10,13 @@
 
 reduction
 void sum(double *a, double b, double unit){
-  *a += b + unit;
+  *a += b;
 }
 
 double l2(uint64_t n, double* a){
   double red = 0; 
   forall(uint64_t i=0; i<n; i++){
     sum(&red, a[i] * a[i], 0.0); 
-    assert(i<n);
   }
 
   return sqrt(red);

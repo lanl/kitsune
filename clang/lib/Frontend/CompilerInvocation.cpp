@@ -4813,6 +4813,7 @@ void CompilerInvocationBase::GenerateKitsuneArgs(const KitsuneOptions &Opts,
     case llvm::TTID::Qthreads:
     case llvm::TTID::Realm:
     case llvm::TTID::Serial:
+    case llvm::TTID::GPU:
       return;
     }
     llvm_unreachable("GenerateKitsuneArgs: TTID not handled");

@@ -22,6 +22,7 @@ std::optional<TTID> llvm::createTTIDFrom(StringRef s) {
       .Case("nolo", TTID::Nolo)
       .Case("cuda", TTID::Cuda)
       .Case("hip", TTID::Hip)
+      .Case("gpu", TTID::GPU)
       .Case("lambda", TTID::Lambda)
       .Case("omptask", TTID::OMPTask)
       .Case("opencilk", TTID::OpenCilk)
@@ -45,8 +46,7 @@ std::optional<TTID> llvm::createTTIDFrom(uint32_t u) {
   case 0x8:
     return TTID::OpenCilk;
   case 0x10:
-    llvm_unreachable("createTTIDFrom: GPUABI has not been enabled");
-    // return TTID::GPUABI;
+    return TTID::GPU;
   case 0x20:
     return TTID::Qthreads;
   case 0x40:

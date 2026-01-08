@@ -37,6 +37,8 @@ std::string llvm::toString(const TTID &tt) {
     return "qthreads";
   case TTID::Realm:
     return "realm";
+  case TTID::GPU:
+    return "gpu";
   }
   llvm_unreachable("toString: TTID not handled");
 }

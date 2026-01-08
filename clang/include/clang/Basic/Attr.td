@@ -5227,6 +5227,7 @@ def NonString : InheritableAttr {
   let Spellings = [GCC<"nonstring">];
   let Subjects = SubjectList<[Var, Field]>;
   let Documentation = [NonStringDocs];
+}
 
 // +===== kitsune-/tapir-centric attributes
 

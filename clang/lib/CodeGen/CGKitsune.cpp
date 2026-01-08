@@ -329,6 +329,7 @@ void CodeGenFunction::EmitForallStmt(const ForallStmt &S,
   // Evaluate the initialization before the loop.
   EmitStmt(S.getInit());
 
+  // TODO: explain more
   // We assume that the boolean is a binary operator and pre-compute RHS
   auto* BO = dyn_cast<BinaryOperator>(S.getCond()); 
   llvm::Value *RHS = EmitScalarExpr(BO->getRHS()); 

@@ -284,7 +284,7 @@ bool DeadArgumentEliminationPass::removeDeadArgumentsFromCallers(Function &F) {
   if (F.hasFnAttribute(Attribute::Naked))
     return false;
 
-  // Don't operate on optnone
+  // Don't operate on optnone (we need this for kitsune reductions)
   if (F.hasFnAttribute(Attribute::OptimizeNone))
     return false;
 
@@ -734,7 +734,7 @@ bool DeadArgumentEliminationPass::removeDeadStuffFromFunction(Function *F) {
   if (FrozenFunctions.count(F))
     return false;
 
-  // Don't operate on optnone
+  // Don't operate on optnone (we need this for kitsune reductions)
   if (F->hasFnAttribute(Attribute::OptimizeNone))
     return false;
 

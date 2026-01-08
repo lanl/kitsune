@@ -87,6 +87,11 @@ createTT(TTID id, Module &m, const TapirTargetOptions &tto) {
   case TTID::Realm:
     return std::make_unique<RealmABI>(m);
 #endif // KITSUNE_REALM_ENABLED
+       
+#if KITSUNE_GPU_ENABLED
+  case TTID::GPU:
+    return std::make_unique<GPUABI>(m, tto);
+#endif // KITSUNE_REALM_ENABLED
 
   default:
     llvm_unreachable("createTT: TTID not handled");

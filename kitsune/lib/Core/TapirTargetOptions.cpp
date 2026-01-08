@@ -47,7 +47,7 @@ static cl::opt<TTID>
                        clEnumValN(TTID::Cuda, "cuda", ""),
                        clEnumValN(TTID::Hip, "hip", ""),
                        clEnumValN(TTID::OpenCilk, "opencilk", ""),
-                       // clEnumValN(TTID::GPUABI, "gpuabi", ""),
+                       clEnumValN(TTID::GPU, "gpu", ""),
                        clEnumValN(TTID::Qthreads, "qthreads", ""),
                        clEnumValN(TTID::Realm, "realm", ""),
                        clEnumValN(TTID::Lambda, "lambda", ""),

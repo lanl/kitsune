@@ -274,4 +274,7 @@ constexpr unsigned KITSUNE_MAX_FIXED_THREADS_PER_BLOCK = 1024;
 
 // -----------------------------------------------------------------------------
 
+// Is the gpu target enabled 
+#cmakedefine01 KITSUNE_GPU_ENABLED
+
 #endif // KITSUNE_CONFIG_H

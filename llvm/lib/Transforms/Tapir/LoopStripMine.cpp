@@ -955,6 +955,15 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   Value *StepSize; 
   Value *BranchVal; 
   // Int the gpu case we don't need an epilogue
+  // If we start with forall(i=0..n)
+  // GPU stripmine converts to 
+  //   forall(i=0; i<k; i++)
+  //     for(j=i; j+=k; j<n)
+  // CPU stripmine converts to
+  //   forall(i=0; i<n/k; i++){
+  //     for(j=i*k; j<(i+1)*k; j++)
+  //   }
+  //   epilogue
   if(GPU){
     ModVal = TripCount;  
     //B.SetInsertPoint(F->getEntryBlock().getFirstNonPHI()); 
@@ -968,7 +977,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
     IRBuilder<> B2(bloc); 
     StepSize = B2.CreateCall(
-      Intrinsic::getDeclaration(M, Intrinsic::tapir_loop_grainsize,
+      Intrinsic::getOrInsertDeclaration(M, Intrinsic::tapir_loop_grainsize,
                                 { TripCount->getType() }), { TripCount });
 
 
@@ -1005,7 +1014,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
                             ConstantInt::get(BECount->getType(), Count),
                             "xtraiter");
     }
-    BranchVal = B.CreateICmpULT(
+    BranchVal = B.CreateICmpSLT(
         BECount, ConstantInt::get(BECount->getType(),
                                   TL.isInclusiveRange() ? Count : Count - 1));
   }
@@ -1096,7 +1105,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     *RemainderLoop =
         cloneLoopBlocks(L, ModVal, CreateRemainderLoop, true, UnrollRemainder,
                         InsertTop, InsertBot, NewPreheader, NewBlocks, LoopBlocks,
-                        ExtraTaskBlocks, SharedEHTaskBlocks, VMap, DT, LI);
+                        ExtraTaskBlocks, SharedEHTaskBlocks, VMap, DT, LI, Count);
 
     // Insert the cloned blocks into the function.
     F->splice(InsertBot->getIterator(), &*F, NewBlocks[0]->getIterator(),
@@ -1157,21 +1166,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
       SerializeDetach(ClonedDI, ParentEntry, EHCont, EHContLPadVal,
                       ClonedReattaches, &ClonedEHBlocks, &ClonedEHBlockPreds,
                       &ClonedInlinedLPads, &ClonedDetachedRethrows,
-                      NeedToInsertTaskFrame, DT, LI);
+                      NeedToInsertTaskFrame, DT, nullptr, LI);
     }
-    SmallVector<Instruction *, 1> ClonedDetachedRethrows;
-    for (Instruction *DR : DetachedRethrows) {
-      if (VMap[DR])
-        ClonedDetachedRethrows.push_back(cast<Instruction>(VMap[DR]));
-      else
-        ClonedDetachedRethrows.push_back(DR);
-    }
-    DetachInst *ClonedDI = cast<DetachInst>(VMap[DI]);
-    // Serialize the new task.
-    SerializeDetach(ClonedDI, ParentEntry, EHCont, EHContLPadVal,
-                    ClonedReattaches, &ClonedEHBlocks, &ClonedEHBlockPreds,
-                    &ClonedInlinedLPads, &ClonedDetachedRethrows,
-                    NeedToInsertTaskFrame, DT, nullptr, LI);
   }
 
   // Detach the stripmined loop.
@@ -1561,7 +1557,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
                       Header->getFirstNonPHIIt());
     // Initialize inner index to zero.
     //Value *Zero = ConstantInt::get(PrimaryInduction->getType(), 0);
-    B2.SetInsertPoint(LatchBR->getParent()->getFirstNonPHI());
+    B2.SetInsertPoint(LatchBR->getParent()->getFirstNonPHIIt());
     // Instead of subtracting one, add the grainsize.
 
     Value *NextIdx = B2.CreateAdd(InnerIdx, StepSize,
@@ -1615,7 +1611,6 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // InnerIdx->addIncoming(InnerAdd, Latch);
     LatchBR->setCondition(InnerCmp);
   }
->>>>>>> 82193e08056a (GPU reductions via stripmining pass working)
 
   // Connect the epilog code to the original loop and update the PHI functions.
   B2.SetInsertPoint(EpilogPreheader->getTerminator());
@@ -1680,8 +1675,45 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     // FIXME: Recalculating TaskInfo for the whole function is wasteful.
     // Optimize this routine in the future.
     //TI->recalculate(*F, *DT);
-
-  // accumulate reductions in main loop
+    
+  // Reductions take a parallel loop
+  // forall(i=0; i<n; i++)
+  //   Can be an aribrary parallel loop with multiple reductions
+  //   BODY
+  //   sum(&red, a[i]; 0.0)
+  //
+  // GPU stripmine converts to 
+  //   nred = gpuGridSize(n);
+  //   reds = managedMalloc(nred);
+  //   forall(i=0; i<nred; i++){
+  //     for(j=i; j<n; j+=nred) {
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //     }
+  //   }
+  //   for(i=0; i<nred; i++)
+  //     sum(&red, reds[i], 0.0);
+  //
+  // CPU stripmine converts to
+  //   nred = n/K; // K defaults to 2048 (DefaultCoarseningFactor)
+  //   reds = managedMalloc();
+  //   forall(i=0; i<n; i+=nred){ // not quite right, need to handle case with epilogue
+  //     reds[i] = 0.0
+  //     for(j=i; j<i+nred; j++){
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //     }
+  //   }
+  //   // Epilogue (leftover iterations)
+  //   if(nred * k > N){ 
+  //     for(...) // epilogue logic
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //   }
+  //   for(i=0; i<nred; i++)
+  //     sum(&red, reds[i], 0.0);
+  //
+  // record calls to reduction functions in loop for later reference
   const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
   std::set<std::pair<CallInst*, Type*>> reductions;
   for (BasicBlock *BB : blocks){
@@ -1716,12 +1748,16 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   //
   //
   // accumulate reductions in epilog loop
-  LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n"); 
+  LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n");
 
-  std::vector<std::tuple<CallInst*, Value* , Value*, Type*, Value*>> redMap; 
+  // Associates calls to reduction functions, first argument to reduction
+  // function,  local reduction allocation, type of unit, unit
+  std::vector<std::tuple<CallInst *, Value *, Value *, Type *, Value *>> redMap;
   // TODO: Modify the strip mining outer loop to be smaller: currently we are
   // stack allocating n/2048 reduction values.
   // TODO: Initialize local reductions with unit values
+  // TODO: move insertion point for reduction allocation
+  // TODO: free reduction allocation
   Instruction* bloc = nullptr;
   if(Instruction* I = dyn_cast<Instruction>(TripCount)){
     bloc = I->getParent()->getTerminator();
@@ -1737,6 +1773,11 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   else 
     outerIters = StepSize;
 
+  // Here we iterate over the reductions (calls to reduction functions), and
+  // allocate the local reduction variable array, and build the association
+  // array redMap, and replace references to the original reduction variable
+  // with references to the new local reduction variable in the body of the
+  // inner loop
   auto nred = RB.CreateAdd(outerIters, ConstantInt::get(outerIters->getType(), 1)); 
   for(auto &pair : reductions){
     // TODO: generic allocation/free calls
@@ -1790,21 +1831,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // start the reduction with that value).
   LLVM_DEBUG(dbgs() << "Function after strip mining, before reduction epilogue\n" << *F); 
    
-  // We insert the reduction code at every sync corresponding to the strimined
-  // loop
-  //
-  // Sync 
-  // RedEpiHeader
-  //   RedEpiBody
-  // RedEpiExit
-
-  // Todo: re-order epilogue and reduction epilogue to preserve associativity
   if(!reductions.empty()){
-    // Peel the first iteration of the loop and replace the reduction calls in
-    // the peeled code with stores
-    // Can't do this in general if the reduction is conditional
     ValueToValueMapTy VMap; 
-    //peelLoop(L, 1, LI, SE, *DT, AC, PreserveLCSSA, VMap); 
     SmallVector<Instruction*, 4> CIS;
     for(auto &BB : NewLoop->blocks()){
       // We find the location that we reduce into and create a store of unit
@@ -1823,12 +1851,14 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
         }
       }
     }
-    
-    /*
-    for(auto &I : CIS){
-      I->eraseFromParent();  
-    }
-    */
+
+  // We insert the reduction code at every sync corresponding to the strimined
+  // loop
+  //
+  // Sync 
+  // RedEpiHeader
+  //   RedEpiBody
+  // RedEpiExit
 
     Instruction* term = LatchExit->getTerminator(); 
     BasicBlock *PostSync = term->getSuccessor(0);
@@ -1838,8 +1868,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     BranchInst::Create(PostSync, RedEpiHeader);
     PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
                                    "reductionepilogueidx",
-                                   RedEpiHeader->getFirstNonPHI());
-    IRBuilder<> BH(RedEpiHeader->getFirstNonPHI()); 
+                                   RedEpiHeader->getFirstNonPHIIt());
+    IRBuilder<> BH(RedEpiHeader, RedEpiHeader->getFirstNonPHIIt()); 
     Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), LatchExit);
     Instruction *bodyTerm, *exitTerm;
     Value *cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, outerIters); 

@@ -14,6 +14,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "kitsune/Analysis/TapirTargetAnalysis.h"
 #include "kitsune/Passes/PipelineUtils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -1734,14 +1735,21 @@ PassBuilder::buildTapirLoopLoweringPipeline(OptimizationLevel Level,
                                               /*UseBlockFrequencyInfo=*/false));
 
   // Stripmine Tapir loops, if pass is enabled.
+  // This was moved from buildModuleOptimizationPipeline, I (George) expect it to be
+  // beneficial for all parallel backends. Needs performance evaluation to confirm.
   if (PTO.LoopStripmine) {
+    // We need to do tapir target analysis to determine how to stripmine
+    MPM.addPass(RequireAnalysisPass<TapirTargetAnalysis, Module>());
+    //MPM.addPass(
+        //createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<TapirTargetAnalysis>()));
+
     LoopPassManager LPM1, LPM2;
-    LPM1.addPass(TapirIndVarSimplifyPass());
+    LPM1.addPass(IndVarSimplifyPass(true, true));
     FPM.addPass(
         createFunctionToLoopPassAdaptor(std::move(LPM1),
                                         /*UseMemorySSA=*/true,
                                         /*UseBlockFrequencyInfo=*/true));
-    FPM.addPass(LoopStripMinePass());
+    MPM.addPass(LoopStripMinePass());
     // Cleanup tasks after stripmining loops.
     FPM.addPass(TaskSimplifyPass());
     // Cleanup after stripmining loops.

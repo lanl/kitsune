@@ -78,8 +78,7 @@ void GPUABI::processSubTaskCall(TaskOutlineInfo &TOI, DominatorTree &DT) {
 }
 
 LoopOutlineProcessor *
-GPUABI::getLoopOutlineProcessor(const TapirLoopInfo *TL,
-		OptimizationLevel OptLevel = OptimizationLevel=O2) {
+GPUABI::getLoopOutlineProcessor(const TapirLoopInfo *TL) {
   if(!LOP)
     return new LLVMLoop(M);
   return LOP;
@@ -89,7 +88,7 @@ GPUABI::getLoopOutlineProcessor(const TapirLoopInfo *TL,
 unsigned LLVMLoop::NextKernelID = 0;
 
 LLVMLoop::LLVMLoop(Module &M)
-    : LoopOutlineProcessor(M, LLVMM), LLVMM("kernelModule", M.getContext()) {
+    : LoopOutlineProcessor(M, TTOpts), LLVMM("kernelModule", M.getContext()) {
   ValueToValueMapTy VMap;
   // LLVMMptr = CloneModule(M, vmap, [](const GlobalValue* gv) { return false; });
   // And named metadata....
@@ -103,7 +102,7 @@ LLVMLoop::LLVMLoop(Module &M)
 
   // Setup an LLVM triple.
   Triple LLVMTriple("spir64-unknown-unknown");
-  LLVMM.setTargetTriple(LLVMTriple.str());
+  LLVMM.setTargetTriple(LLVMTriple);
 
   // Insert runtime-function declarations in LLVM host modules.
   Type *LLVMInt32Ty = Type::getInt32Ty(LLVMM.getContext());

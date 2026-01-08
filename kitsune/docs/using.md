@@ -101,29 +101,21 @@ Each special mode and runtime transformation/ABI target has its own named config
 These files can reduce complexity for end users by providing configuration- and build-specific flags.  This can be important when version-specific bitcode files and other details are used.  In addition, these files can provide developers additional flexibility for debugging, testing, and experimenting.  Obviously, all these features can also be hardcoded onto the command line for a more traditional use case.  In addition, to override any of the Kitsune or system configuration files you can place an empty config file within the user directory (no kitsune or system configuration files will be read in this case). 
 
 ## Reductions 
-We provide two approaches to reductions. The first (still very much a work in
-progress and likely to break) is implicit reductions. This allows you to write
-basic reductions in the way you would for sequential code, and have them be
-optimized for parallelism, e.g. 
+We provide a reduction keyword that acts as a set of attributes, including a custom kitsune_reduction attribute, that takes three arguments: the first is the lhs operand in memory, which will be updated in-place. The second is the rhs, and the third is the unit value of the monoid. This should be ignored in the body, and is used as an easy way to refer to the unit value in codegen.
+
 
 ```
-forall(auto x : xs) {
-  acc += x;
-}
-```
+#include<kitsune.h>
 
-should generate efficient parallel reduction code.
-
-Second, we provide a c++ interface for parallel reduction via user-defined
-reduction operators. Formally, we require a unital magma, which is just a
-reduction operator and a unit value, e.g. 0 for sums and 1 for products.
-
-This allows for the following style of reductions: 
-
-```
-#include<reductions.h>
 ...
-  double sum = reduce<double>(Sum<double>(), big);
+reduction void sum(double* l, double r, double unit){
+    *l += r;
+}
+
+double red=0.0;
+forall(...){
+    sum(&red, x, 0.0) ;
+}
 ```
 
 

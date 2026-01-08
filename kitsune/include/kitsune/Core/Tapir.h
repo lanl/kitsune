@@ -55,7 +55,7 @@ enum class TTID : uint32_t {
 
   /// Lower to kitsune's JIT-enabled, GPU-agnostic runtime.
   /// FIXME: This has been disabled for now, but should be re-enabled shortly.
-  // GPUABI = 0x10,
+  GPU = 0x10,
 
   /// Lower to the qthreads runtime.
   /// FIXME: This is currently disabled and needs to be updated before it can be
@@ -78,6 +78,7 @@ enum class TTID : uint32_t {
 
   /// FIXME: Almost certainly obsolete.
   OpenMP = 0x200,
+
 };
 
 /// Convert the integer to a \ref TTID. If the integer cannot be converted to a
