@@ -441,6 +441,7 @@ inline CUcontext __kitcuda_get_context() {
 #endif
 
 extern CUdevice _kitcuda_device;
+extern CUmemLocation _kitcuda_mem_location; 
 extern CUcontext _kitcuda_context;
 
 #define CU_SAFE_CALL(x)                                                        \

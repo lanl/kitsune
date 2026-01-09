@@ -40,6 +40,7 @@
 #include "llvm/Transforms/Utils/SimplifyIndVar.h"
 #include "llvm/Transforms/Utils/TapirUtils.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
+#include "llvm/Transforms/Utils/LoopPeel.h"
 
 using namespace llvm;
 
@@ -766,7 +767,8 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
                           const TargetTransformInfo &TTI, AssumptionCache *AC,
                           TaskInfo *TI, OptimizationRemarkEmitter *ORE,
                           bool PreserveLCSSA, bool ParallelEpilog,
-                          bool NeedNestedSync, Loop **RemainderLoop) {
+                          bool NeedNestedSync, Loop **RemainderLoop,
+                          bool GPU) {
   Task *T = getTapirLoopForStripMining(L, *TI, ORE);
   if (!T)
     return nullptr;
@@ -815,6 +817,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   BasicBlock *Latch = L->getLoopLatch();
   BasicBlock *Header = L->getHeader();
   BasicBlock *TaskEntry = T->getEntry();
+
   assert(isa<DetachInst>(Header->getTerminator()) &&
          "Header not terminated by a detach.");
   DetachInst *DI = cast<DetachInst>(Header->getTerminator());
@@ -824,6 +827,10 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   BranchInst *LatchBR = cast<BranchInst>(Latch->getTerminator());
   unsigned ExitIndex = LatchBR->getSuccessor(0) == Header ? 1 : 0;
   BasicBlock *LatchExit = LatchBR->getSuccessor(ExitIndex);
+
+  
+  Function *F = Header->getParent();
+  LLVM_DEBUG(dbgs() << "Function before strip mining\n" << *F); 
 
   // We will use the increment of the primary induction variable to derive
   // wrapping flags.
@@ -878,7 +885,12 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
     return nullptr;
   }
 
-  LLVM_DEBUG(dbgs() << "Stripmining loop using grainsize " << Count << "\n");
+  if(GPU){
+    LLVM_DEBUG(dbgs() << "Stripmining loop using grainsize " << "gpu grainsize call" << "\n");
+  }
+  else {
+    LLVM_DEBUG(dbgs() << "Stripmining loop using grainsize " << Count << "\n");
+  }
   using namespace ore;
   ORE->emit([&]() {
               return OptimizationRemark(LSM_NAME, "Stripmined",
@@ -894,6 +906,7 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   //   ...
   //   Latch
   // LatchExit
+  Module *M = F->getParent();
 
   // Insert the epilog remainder.
   BasicBlock *NewPreheader;
@@ -937,41 +950,74 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // *EpilogPreheader
   // LatchExit
 
-  IRBuilder<> B(PreheaderBR);
+  IRBuilder<> B(PreheaderBR); 
   Value *ModVal;
-  // Calculate ModVal = (BECount + 1) % Count.
-  // Note that TripCount is BECount + 1.
-  if (isPowerOf2_32(Count)) {
-    // When Count is power of 2 we don't BECount for epilog case.  However we'll
-    // need it for a branch around stripmined loop for prolog case.
-    ModVal = B.CreateAnd(TripCount, Count - 1, "xtraiter");
-    //  1. There are no iterations to be run in the prolog/epilog loop.
-    // OR
-    //  2. The addition computing TripCount overflowed.
-    //
-    // If (2) is true, we know that TripCount really is (1 << BEWidth) and so
-    // the number of iterations that remain to be run in the original loop is a
-    // multiple Count == (1 << Log2(Count)) because Log2(Count) <= BEWidth (we
-    // explicitly check this above).
-    if (TL.isInclusiveRange())
-      ModVal = B.CreateAdd(ModVal, ConstantInt::get(ModVal->getType(), 1));
-  } else {
-    // As (BECount + 1) can potentially unsigned overflow we count
-    // (BECount % Count) + 1 which is overflow safe as BECount % Count < Count.
-    Value *ModValTmp = B.CreateURem(BECount,
-                                    ConstantInt::get(BECount->getType(),
-                                                     Count));
-    Value *ModValAdd = B.CreateAdd(ModValTmp,
-                                   ConstantInt::get(ModValTmp->getType(), 1));
-    // At that point (BECount % Count) + 1 could be equal to Count.
-    // To handle this case we need to take mod by Count one more time.
-    ModVal = B.CreateURem(ModValAdd,
-                          ConstantInt::get(BECount->getType(), Count),
-                          "xtraiter");
+  Value *StepSize; 
+  Value *BranchVal; 
+  // Int the gpu case we don't need an epilogue
+  // If we start with forall(i=0..n)
+  // GPU stripmine converts to 
+  //   forall(i=0; i<k; i++)
+  //     for(j=i; j+=k; j<n)
+  // CPU stripmine converts to
+  //   forall(i=0; i<n/k; i++){
+  //     for(j=i*k; j<(i+1)*k; j++)
+  //   }
+  //   epilogue
+  if(GPU){
+    ModVal = TripCount;  
+    //B.SetInsertPoint(F->getEntryBlock().getFirstNonPHI()); 
+
+    Instruction* bloc; 
+    if(Instruction* I = dyn_cast<Instruction>(TripCount)){
+      bloc = I->getNextNode();
+    } else {
+      bloc = F->getEntryBlock().getTerminator();
+    }
+
+    IRBuilder<> B2(bloc); 
+    StepSize = B2.CreateCall(
+      Intrinsic::getOrInsertDeclaration(M, Intrinsic::tapir_loop_grainsize,
+                                { TripCount->getType() }), { TripCount });
+
+
+    BranchVal = B.CreateICmpULE(ModVal, ConstantInt::get(ModVal->getType(), 0)); 
   }
-  Value *BranchVal = B.CreateICmpSLT(
-      BECount, ConstantInt::get(BECount->getType(),
-                                TL.isInclusiveRange() ? Count : Count - 1));
+  else {
+    // Calculate ModVal = (BECount + 1) % Count.
+    // Note that TripCount is BECount + 1.
+    if (isPowerOf2_32(Count)) {
+      // When Count is power of 2 we don't BECount for epilog case.  However we'll
+      // need it for a branch around stripmined loop for prolog case.
+      ModVal = B.CreateAnd(TripCount, Count - 1, "xtraiter");
+      //  1. There are no iterations to be run in the prolog/epilog loop.
+      // OR
+      //  2. The addition computing TripCount overflowed.
+      //
+      // If (2) is true, we know that TripCount really is (1 << BEWidth) and so
+      // the number of iterations that remain to be run in the original loop is a
+      // multiple Count == (1 << Log2(Count)) because Log2(Count) <= BEWidth (we
+      // explicitly check this above).
+      if (TL.isInclusiveRange())
+        ModVal = B.CreateAdd(ModVal, ConstantInt::get(ModVal->getType(), 1));
+    } else {
+      // As (BECount + 1) can potentially unsigned overflow we count
+      // (BECount % Count) + 1 which is overflow safe as BECount % Count < Count.
+      Value *ModValTmp = B.CreateURem(BECount,
+                                      ConstantInt::get(BECount->getType(),
+                                                       Count));
+      Value *ModValAdd = B.CreateAdd(ModValTmp,
+                                     ConstantInt::get(ModValTmp->getType(), 1));
+      // At that point (BECount % Count) + 1 could be equal to Count.
+      // To handle this case we need to take mod by Count one more time.
+      ModVal = B.CreateURem(ModValAdd,
+                            ConstantInt::get(BECount->getType(), Count),
+                            "xtraiter");
+    }
+    BranchVal = B.CreateICmpSLT(
+        BECount, ConstantInt::get(BECount->getType(),
+                                  TL.isInclusiveRange() ? Count : Count - 1));
+  }
   BasicBlock *RemainderLoopBB = NewExit;
   BasicBlock *StripminedLoopBB = NewPreheader;
   // Branch to either remainder (extra iterations) loop or stripmined loop.
@@ -980,7 +1026,6 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   if (DT)
     DT->changeImmediateDominator(NewExit, Preheader);
 
-  Function *F = Header->getParent();
   // Get an ordered list of blocks in the loop to help with the ordering of the
   // cloned blocks in the prolog/epilog code
   LoopBlocksDFS LoopBlocks(L);
@@ -1049,21 +1094,22 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // TODO: For stripmine factor 2 remainder loop will have 1 iterations.
   // Do not create 1 iteration loop.
   // bool CreateRemainderLoop = (Count != 2);
-  bool CreateRemainderLoop = true;
+  bool CreateRemainderLoop = !GPU;
 
   // Clone all the basic blocks in the loop. If Count is 2, we don't clone
   // the loop, otherwise we create a cloned loop to execute the extra
   // iterations. This function adds the appropriate CFG connections.
   BasicBlock *InsertBot = LatchExit;
   BasicBlock *InsertTop = EpilogPreheader;
-  *RemainderLoop =
-      cloneLoopBlocks(L, ModVal, CreateRemainderLoop, true, UnrollRemainder,
-                      InsertTop, InsertBot, NewPreheader, NewBlocks, LoopBlocks,
-                      ExtraTaskBlocks, SharedEHTaskBlocks, VMap, DT, LI, Count);
+  if(CreateRemainderLoop){
+    *RemainderLoop =
+        cloneLoopBlocks(L, ModVal, CreateRemainderLoop, true, UnrollRemainder,
+                        InsertTop, InsertBot, NewPreheader, NewBlocks, LoopBlocks,
+                        ExtraTaskBlocks, SharedEHTaskBlocks, VMap, DT, LI, Count);
 
-  // Insert the cloned blocks into the function.
-  F->splice(InsertBot->getIterator(), &*F, NewBlocks[0]->getIterator(),
-            F->end());
+    // Insert the cloned blocks into the function.
+    F->splice(InsertBot->getIterator(), &*F, NewBlocks[0]->getIterator(),
+              F->end());
 
   // Loop structure should be the following:
   //  Epilog
@@ -1082,51 +1128,51 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
   // Rewrite the cloned instruction operands to use the values created when the
   // clone is created.
-  for (BasicBlock *BB : NewBlocks)
-    for (Instruction &I : *BB)
-      RemapInstruction(&I, VMap,
-                       RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
+    for (BasicBlock *BB : NewBlocks)
+      for (Instruction &I : *BB)
+        RemapInstruction(&I, VMap,
+                         RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
 
-  // Serialize the cloned loop body to render the inner loop serial.
-  {
-    // Translate all the analysis for the new cloned task.
-    SmallVector<Instruction *, 1> ClonedReattaches;
-    for (Instruction *I : Reattaches)
-      ClonedReattaches.push_back(cast<Instruction>(VMap[I]));
-    SmallPtrSet<BasicBlock *, 4> ClonedEHBlockPreds;
-    for (BasicBlock *B : EHBlockPreds)
-      ClonedEHBlockPreds.insert(cast<BasicBlock>(VMap[B]));
-    SmallVector<BasicBlock *, 4> ClonedEHBlocks;
-    for (BasicBlock *B : EHBlocksToClone)
-      ClonedEHBlocks.push_back(cast<BasicBlock>(VMap[B]));
-    // Landing pads and detached-rethrow instructions may or may not have been
-    // cloned.
-    SmallPtrSet<LandingPadInst *, 1> ClonedInlinedLPads;
-    for (LandingPadInst *LPad : InlinedLPads) {
-      if (VMap[LPad])
-        ClonedInlinedLPads.insert(cast<LandingPadInst>(VMap[LPad]));
-      else
-        ClonedInlinedLPads.insert(LPad);
+    // Serialize the cloned loop body to render the inner loop serial.
+    {
+      // Translate all the analysis for the new cloned task.
+      SmallVector<Instruction *, 1> ClonedReattaches;
+      for (Instruction *I : Reattaches)
+        ClonedReattaches.push_back(cast<Instruction>(VMap[I]));
+      SmallPtrSet<BasicBlock *, 4> ClonedEHBlockPreds;
+      for (BasicBlock *B : EHBlockPreds)
+        ClonedEHBlockPreds.insert(cast<BasicBlock>(VMap[B]));
+      SmallVector<BasicBlock *, 4> ClonedEHBlocks;
+      for (BasicBlock *B : EHBlocksToClone)
+        ClonedEHBlocks.push_back(cast<BasicBlock>(VMap[B]));
+      // Landing pads and detached-rethrow instructions may or may not have been
+      // cloned.
+      SmallPtrSet<LandingPadInst *, 1> ClonedInlinedLPads;
+      for (LandingPadInst *LPad : InlinedLPads) {
+        if (VMap[LPad])
+          ClonedInlinedLPads.insert(cast<LandingPadInst>(VMap[LPad]));
+        else
+          ClonedInlinedLPads.insert(LPad);
+      }
+      SmallVector<Instruction *, 1> ClonedDetachedRethrows;
+      for (Instruction *DR : DetachedRethrows) {
+        if (VMap[DR])
+          ClonedDetachedRethrows.push_back(cast<Instruction>(VMap[DR]));
+        else
+          ClonedDetachedRethrows.push_back(DR);
+      }
+      DetachInst *ClonedDI = cast<DetachInst>(VMap[DI]);
+      // Serialize the new task.
+      SerializeDetach(ClonedDI, ParentEntry, EHCont, EHContLPadVal,
+                      ClonedReattaches, &ClonedEHBlocks, &ClonedEHBlockPreds,
+                      &ClonedInlinedLPads, &ClonedDetachedRethrows,
+                      NeedToInsertTaskFrame, DT, nullptr, LI);
     }
-    SmallVector<Instruction *, 1> ClonedDetachedRethrows;
-    for (Instruction *DR : DetachedRethrows) {
-      if (VMap[DR])
-        ClonedDetachedRethrows.push_back(cast<Instruction>(VMap[DR]));
-      else
-        ClonedDetachedRethrows.push_back(DR);
-    }
-    DetachInst *ClonedDI = cast<DetachInst>(VMap[DI]);
-    // Serialize the new task.
-    SerializeDetach(ClonedDI, ParentEntry, EHCont, EHContLPadVal,
-                    ClonedReattaches, &ClonedEHBlocks, &ClonedEHBlockPreds,
-                    &ClonedInlinedLPads, &ClonedDetachedRethrows,
-                    NeedToInsertTaskFrame, DT, nullptr, LI);
   }
 
   // Detach the stripmined loop.
   Value *SyncReg = DI->getSyncRegion(), *NewSyncReg;
   BasicBlock *EpilogPred, *LoopDetEntry, *LoopReattach;
-  Module *M = F->getParent();
   if (ParallelEpilog) {
     ORE->emit([&]() {
                 return OptimizationRemark(LSM_NAME, "ParallelEpil",
@@ -1339,48 +1385,66 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   //
   // TODO: Generalize to handle non-power-of-2 counts.
   assert(isPowerOf2_32(Count) && "Count is not a power of 2.");
-  Value *TestVal = B2.CreateUDiv(TripCount,
-                                 ConstantInt::get(TripCount->getType(), Count),
-                                 "stripiter");
-  // Value *TestVal = B2.CreateSub(TripCount, ModVal, "stripiter", true, true);
+  PHINode *NewIdx; 
+  if(GPU){
+    Value *TestVal = StepSize;
+    NewIdx = PHINode::Create(TestVal->getType(), 2, "niter",
+                                      NewHeader->getFirstNonPHIIt());
+    B2.SetInsertPoint(NewLatch->getTerminator());
+    Instruction *IdxAdd = cast<Instruction>(
+        B2.CreateAdd(NewIdx, ConstantInt::get(NewIdx->getType(), 1),
+                     NewIdx->getName() + ".nadd"));
+    IdxAdd->copyIRFlags(PrimaryInc);
+    NewIdx->addIncoming(ConstantInt::get(TestVal->getType(), 0), LoopDetEntry);
+    NewIdx->addIncoming(IdxAdd, NewLatch);
+    Value *IdxCmp = B2.CreateICmpEQ(IdxAdd, TestVal,
+                                    NewIdx->getName() + ".ncmp");
+    ReplaceInstWithInst(NewLatch->getTerminator(),
+                        BranchInst::Create(LoopReattach, NewHeader, IdxCmp));
+  } else {
+    Value *TestVal = B2.CreateUDiv(TripCount,
+                                   ConstantInt::get(TripCount->getType(), Count),
+                                   "stripiter");
+    // Value *TestVal = B2.CreateSub(TripCount, ModVal, "stripiter", true, true);
 
-  // Value *TestCmp = B2.CreateICmpUGT(TestVal,
-  //                                   ConstantInt::get(TestVal->getType(), 0),
-  //                                   TestVal->getName() + ".ncmp");
-  // ReplaceInstWithInst(NewPreheader->getTerminator(),
-  //                     BranchInst::Create(Header, LatchExit, TestCmp));
-  // DT->changeImmediateDominator(LatchExit,
-  //                              DT->findNearestCommonDominator(LatchExit,
-  //                                                             NewPreheader));
+    // Value *TestCmp = B2.CreateICmpUGT(TestVal,
+    //                                   ConstantInt::get(TestVal->getType(), 0),
+    //                                   TestVal->getName() + ".ncmp");
+    // ReplaceInstWithInst(NewPreheader->getTerminator(),
+    //                     BranchInst::Create(Header, LatchExit, TestCmp));
+    // DT->changeImmediateDominator(LatchExit,
+    //                              DT->findNearestCommonDominator(LatchExit,
+    //                                                             NewPreheader));
 
-  // Add new counter for new outer loop.
-  //
-  // We introduce a new primary induction variable, NewIdx, into the outer loop,
-  // which counts up to the outer-loop trip count from 0, stepping by 1.  In
-  // contrast to counting down from the outer-loop trip count, this new variable
-  // ensures that future loop passes, including LoopSpawning, can process this
-  // outer loop when we're done.
-  PHINode *NewIdx = PHINode::Create(TestVal->getType(), 2, "niter");
-  NewIdx->insertBefore(NewHeader->getFirstNonPHIIt());
-  B2.SetInsertPoint(NewLatch->getTerminator());
-  // Instruction *IdxSub = cast<Instruction>(
-  //     B2.CreateSub(NewIdx, ConstantInt::get(NewIdx->getType(), 1),
-  //                  NewIdx->getName() + ".nsub"));
-  // IdxSub->copyIRFlags(PrimaryInc);
-  Instruction *IdxAdd = cast<Instruction>(
-      B2.CreateAdd(NewIdx, ConstantInt::get(NewIdx->getType(), 1),
-                   NewIdx->getName() + ".nadd"));
-  IdxAdd->copyIRFlags(PrimaryInc);
+    // Add new counter for new outer loop.
+    //
+    // We introduce a new primary induction variable, NewIdx, into the outer loop,
+    // which counts up to the outer-loop trip count from 0, stepping by 1.  In
+    // contrast to counting down from the outer-loop trip count, this new variable
+    // ensures that future loop passes, including LoopSpawning, can process this
+    // outer loop when we're done.
+    NewIdx = PHINode::Create(TestVal->getType(), 2, "niter",
+                                      NewHeader->getFirstNonPHIIt());
+    B2.SetInsertPoint(NewLatch->getTerminator());
+    // Instruction *IdxSub = cast<Instruction>(
+    //     B2.CreateSub(NewIdx, ConstantInt::get(NewIdx->getType(), 1),
+    //                  NewIdx->getName() + ".nsub"));
+    // IdxSub->copyIRFlags(PrimaryInc);
+    Instruction *IdxAdd = cast<Instruction>(
+        B2.CreateAdd(NewIdx, ConstantInt::get(NewIdx->getType(), 1),
+                     NewIdx->getName() + ".nadd"));
+    IdxAdd->copyIRFlags(PrimaryInc);
 
-  // NewIdx->addIncoming(TestVal, NewPreheader);
-  // NewIdx->addIncoming(IdxSub, NewLatch);
-  // Value *IdxCmp = B2.CreateIsNull(IdxSub, NewIdx->getName() + ".ncmp");
-  NewIdx->addIncoming(ConstantInt::get(TestVal->getType(), 0), LoopDetEntry);
-  NewIdx->addIncoming(IdxAdd, NewLatch);
-  Value *IdxCmp = B2.CreateICmpEQ(IdxAdd, TestVal,
-                                  NewIdx->getName() + ".ncmp");
-  ReplaceInstWithInst(NewLatch->getTerminator(),
-                      BranchInst::Create(LoopReattach, NewHeader, IdxCmp));
+    // NewIdx->addIncoming(TestVal, NewPreheader);
+    // NewIdx->addIncoming(IdxSub, NewLatch);
+    // Value *IdxCmp = B2.CreateIsNull(IdxSub, NewIdx->getName() + ".ncmp");
+    NewIdx->addIncoming(ConstantInt::get(TestVal->getType(), 0), LoopDetEntry);
+    NewIdx->addIncoming(IdxAdd, NewLatch);
+    Value *IdxCmp = B2.CreateICmpEQ(IdxAdd, TestVal,
+                                    NewIdx->getName() + ".ncmp");
+    ReplaceInstWithInst(NewLatch->getTerminator(),
+                        BranchInst::Create(LoopReattach, NewHeader, IdxCmp));
+  }
   DT->changeImmediateDominator(NewLatch, NewHeader);
   // The block structure of the stripmined loop should now look like so:
   //
@@ -1460,75 +1524,112 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
 
   // Update all of the old PHI nodes
   B2.SetInsertPoint(NewEntry->getTerminator());
-  Instruction *CountVal = cast<Instruction>(
-      B2.CreateMul(ConstantInt::get(NewIdx->getType(), Count),
-                   NewIdx));
-  CountVal->copyIRFlags(PrimaryInduction);
-  for (auto &InductionEntry : *TL.getInductionVars()) {
-    PHINode *OrigPhi = InductionEntry.first;
-    const InductionDescriptor &II = InductionEntry.second;
-    if (II.getStep()->isZero())
-      // Nothing to do for this Phi
-      continue;
-    // Get the new step value for this Phi.
-    Value *PhiCount = !II.getStep()->getType()->isIntegerTy()
-      ? B2.CreateCast(Instruction::SIToFP, CountVal,
-                      II.getStep()->getType())
-      : B2.CreateSExtOrTrunc(CountVal, II.getStep()->getType());
-    Value *NewStart = emitTransformedIndex(B2, PhiCount, SE, DL, II);
+  if(GPU){
+  }
+  else{
+    Instruction *CountVal = cast<Instruction>(
+        B2.CreateMul(ConstantInt::get(NewIdx->getType(), Count),
+                     NewIdx));
+    CountVal->copyIRFlags(PrimaryInduction);
+    for (auto &InductionEntry : *TL.getInductionVars()) {
+      PHINode *OrigPhi = InductionEntry.first;
+      const InductionDescriptor &II = InductionEntry.second;
+      if (II.getStep()->isZero())
+        // Nothing to do for this Phi
+        continue;
+      // Get the new step value for this Phi.
+      Value *PhiCount = !II.getStep()->getType()->isIntegerTy()
+        ? B2.CreateCast(Instruction::SIToFP, CountVal,
+                        II.getStep()->getType())
+        : B2.CreateSExtOrTrunc(CountVal, II.getStep()->getType());
+      Value *NewStart = emitTransformedIndex(B2, PhiCount, SE, DL, II);
 
-    // Get the old increment instruction for this Phi
-    int Idx = OrigPhi->getBasicBlockIndex(NewEntry);
-    OrigPhi->setIncomingValue(Idx, NewStart);
+      // Get the old increment instruction for this Phi
+      int Idx = OrigPhi->getBasicBlockIndex(NewEntry);
+      OrigPhi->setIncomingValue(Idx, NewStart);
+    }
   }
 
-  // Add new induction variable for inner loop.
-  PHINode *InnerIdx =
-      PHINode::Create(PrimaryInduction->getType(), 2, "inneriter");
-  InnerIdx->insertBefore(Header->getFirstNonPHIIt());
-  Value *InnerTestVal = ConstantInt::get(PrimaryInduction->getType(), Count);
-  B2.SetInsertPoint(LatchBR);
-  Instruction *InnerSub = cast<Instruction>(
-      B2.CreateSub(InnerIdx, ConstantInt::get(InnerIdx->getType(), 1),
-                   InnerIdx->getName() + ".nsub"));
-  InnerSub->copyIRFlags(PrimaryInc);
-  // Instruction *InnerAdd = cast<Instruction>(
-  //     B2.CreateAdd(InnerIdx, ConstantInt::get(InnerIdx->getType(), 1),
-  //                  InnerIdx->getName() + ".nadd"));
-  // InnerAdd->copyIRFlags(PrimaryInc);
-  Value *InnerCmp;
-  if (LatchBR->getSuccessor(0) == Header)
-    InnerCmp = B2.CreateIsNotNull(InnerSub, InnerIdx->getName() + ".ncmp");
-  else
-    InnerCmp = B2.CreateIsNull(InnerSub, InnerIdx->getName() + ".ncmp");
-  InnerIdx->addIncoming(InnerTestVal, NewEntry);
-  InnerIdx->addIncoming(InnerSub, Latch);
-  // if (LatchBR->getSuccessor(0) == Header)
-  //   InnerCmp = B2.CreateICmpNE(InnerAdd, InnerTestVal,
-  //                              InnerIdx->getName() + ".ncmp");
-  // else
-  //   InnerCmp = B2.CreateICmpEQ(InnerAdd, InnerTestVal,
-  //                              InnerIdx->getName() + ".ncmp");
-  // InnerIdx->addIncoming(ConstantInt::get(InnerIdx->getType(), 0), NewEntry);
-  // InnerIdx->addIncoming(InnerAdd, Latch);
-  LatchBR->setCondition(InnerCmp);
+  if(GPU){
+    // GPU mode: inner loop strides by grainsize.
+    PHINode *InnerIdx =
+      PHINode::Create(PrimaryInduction->getType(), 2, "inneriter", 
+                      Header->getFirstNonPHIIt());
+    // Initialize inner index to zero.
+    //Value *Zero = ConstantInt::get(PrimaryInduction->getType(), 0);
+    B2.SetInsertPoint(LatchBR->getParent()->getFirstNonPHIIt());
+    // Instead of subtracting one, add the grainsize.
+
+    Value *NextIdx = B2.CreateAdd(InnerIdx, StepSize,
+                                  InnerIdx->getName() + ".nadd_stride");
+
+    //NextIdx->copyIRFlags(PrimaryInc);
+    // Check if the new index is still within the original trip count.
+    InnerIdx->addIncoming(NewIdx, NewEntry);
+    InnerIdx->addIncoming(NextIdx, Latch);
+    Value *InnerCmp;
+    if (LatchBR->getSuccessor(0) == Header)
+      InnerCmp = B2.CreateICmpULT(NextIdx, TripCount,
+                                         InnerIdx->getName() + ".ncmp_final");
+    
+    else
+      InnerCmp = B2.CreateICmpUGE(NextIdx, TripCount,
+                                         InnerIdx->getName() + ".ncmp_final");
+
+    LatchBR->setCondition(InnerCmp);
+    // In the gpu case, we actually want to replace the induction variable
+    PrimaryInduction->replaceAllUsesWith(InnerIdx); 
+  } else {
+    // Add new induction variable for inner loop.
+    PHINode *InnerIdx = PHINode::Create(PrimaryInduction->getType(), 2,
+                                        "inneriter",
+                                        Header->getFirstNonPHIIt());
+    Value *InnerTestVal = ConstantInt::get(PrimaryInduction->getType(), Count);
+    B2.SetInsertPoint(LatchBR);
+    Instruction *InnerSub = cast<Instruction>(
+        B2.CreateSub(InnerIdx, ConstantInt::get(InnerIdx->getType(), 1),
+                     InnerIdx->getName() + ".nsub"));
+    InnerSub->copyIRFlags(PrimaryInc);
+    // Instruction *InnerAdd = cast<Instruction>(
+    //     B2.CreateAdd(InnerIdx, ConstantInt::get(InnerIdx->getType(), 1),
+    //                  InnerIdx->getName() + ".nadd"));
+    // InnerAdd->copyIRFlags(PrimaryInc);
+    Value *InnerCmp;
+    if (LatchBR->getSuccessor(0) == Header)
+      InnerCmp = B2.CreateIsNotNull(InnerSub, InnerIdx->getName() + ".ncmp");
+    else
+      InnerCmp = B2.CreateIsNull(InnerSub, InnerIdx->getName() + ".ncmp");
+    InnerIdx->addIncoming(InnerTestVal, NewEntry);
+    InnerIdx->addIncoming(InnerSub, Latch);
+    // if (LatchBR->getSuccessor(0) == Header)
+    //   InnerCmp = B2.CreateICmpNE(InnerAdd, InnerTestVal,
+    //                              InnerIdx->getName() + ".ncmp");
+    // else
+    //   InnerCmp = B2.CreateICmpEQ(InnerAdd, InnerTestVal,
+    //                              InnerIdx->getName() + ".ncmp");
+    // InnerIdx->addIncoming(ConstantInt::get(InnerIdx->getType(), 0), NewEntry);
+    // InnerIdx->addIncoming(InnerAdd, Latch);
+    LatchBR->setCondition(InnerCmp);
+  }
 
   // Connect the epilog code to the original loop and update the PHI functions.
   B2.SetInsertPoint(EpilogPreheader->getTerminator());
 
-  // Compute the start of the epilog iterations.  We use a divide and multiply
-  // by the power-of-2 count to simplify the SCEV's of the induction variables
-  // for later analysis passes.
-  // Value *EpilStartIter = B2.CreateSub(TripCount, ModVal);
-  Value *EpilStartIter =
-    B2.CreateMul(B2.CreateUDiv(TripCount,
-                               ConstantInt::get(TripCount->getType(), Count)),
-                 ConstantInt::get(TripCount->getType(), Count));
-  if (Instruction *ESIInst = dyn_cast<Instruction>(EpilStartIter))
-    ESIInst->copyIRFlags(PrimaryInc);
-  connectEpilog(TL, EpilStartIter, ModVal, EpilogPred, LoopReattach, NewExit,
-                LatchExit, Preheader, EpilogPreheader, VMap, DT, LI, SE, DL,
-                PreserveLCSSA);
+  if(!GPU){
+    // Compute the start of the epilog iterations.  We use a divide and multiply
+    // by the power-of-2 count to simplify the SCEV's of the induction variables
+    // for later analysis passes.
+    // Value *EpilStartIter = B2.CreateSub(TripCount, ModVal);
+    Value *EpilStartIter =
+      B2.CreateMul(B2.CreateUDiv(TripCount,
+                                 ConstantInt::get(TripCount->getType(), Count)),
+                   ConstantInt::get(TripCount->getType(), Count));
+    if (Instruction *ESIInst = dyn_cast<Instruction>(EpilStartIter))
+      ESIInst->copyIRFlags(PrimaryInc);
+    connectEpilog(TL, EpilStartIter, ModVal, EpilogPred, LoopReattach, NewExit,
+                  LatchExit, Preheader, EpilogPreheader, VMap, DT, LI, SE, DL,
+                  PreserveLCSSA);
+  }
 
   // If this loop is nested, then the loop stripminer changes the code in the
   // any of its parent loops, so the Scalar Evolution pass needs to be run
@@ -1548,29 +1649,276 @@ Loop *llvm::StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
   // }
 
   // Record that the remainder loop was derived from a Tapir loop.
-  (*RemainderLoop)->setDerivedFromTapirLoop();
+  if(!GPU)
+    (*RemainderLoop)->setDerivedFromTapirLoop();
 
   // At this point, the code is well formed.  We now simplify the new loops,
   // doing constant propagation and dead code elimination as we go.
   simplifyLoopAfterStripMine(L, /*SimplifyIVs*/ true, LI, SE, DT, TTI, AC);
   simplifyLoopAfterStripMine(NewLoop, /*SimplifyIVs*/ true, LI, SE, DT, TTI,
                              AC);
-  simplifyLoopAfterStripMine(*RemainderLoop, /*SimplifyIVs*/ true, LI, SE, DT,
-                             TTI, AC);
+  if(!GPU)
+    simplifyLoopAfterStripMine(*RemainderLoop, /*SimplifyIVs*/ true, LI, SE, DT,
+                               TTI, AC);
 
+  // TODO: update all the analyses manually
 #ifndef NDEBUG
-  DT->verify();
-  LI->verify(*DT);
+  //DT->verify();
+  //LI->verify(*DT);
 #endif
 
   // Record that the old loop was derived from a Tapir loop.
   L->setDerivedFromTapirLoop();
 
   // Update TaskInfo manually using the updated DT.
-  if (TI)
+  //if (TI)
     // FIXME: Recalculating TaskInfo for the whole function is wasteful.
     // Optimize this routine in the future.
-    TI->recalculate(*F, *DT);
+    //TI->recalculate(*F, *DT);
+    
+  // Reductions take a parallel loop
+  // forall(i=0; i<n; i++)
+  //   Can be an aribrary parallel loop with multiple reductions
+  //   BODY
+  //   sum(&red, a[i]; 0.0)
+  //
+  // GPU stripmine converts to 
+  //   nred = gpuGridSize(n);
+  //   reds = managedMalloc(nred);
+  //   forall(i=0; i<nred; i++){
+  //     for(j=i; j<n; j+=nred) {
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //     }
+  //   }
+  //   for(i=0; i<nred; i++)
+  //     sum(&red, reds[i], 0.0);
+  //
+  // CPU stripmine converts to
+  //   nred = n/K; // K defaults to 2048 (DefaultCoarseningFactor)
+  //   reds = managedMalloc();
+  //   forall(i=0; i<n; i+=nred){ // not quite right, need to handle case with epilogue
+  //     reds[i] = 0.0
+  //     for(j=i; j<i+nred; j++){
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //     }
+  //   }
+  //   // Epilogue (leftover iterations)
+  //   if(nred * k > N){ 
+  //     for(...) // epilogue logic
+  //       BODY
+  //       sum(&reds[i], a[j]; 0.0)
+  //   }
+  //   for(i=0; i<nred; i++)
+  //     sum(&red, reds[i], 0.0);
+  //
+  // record calls to reduction functions in loop for later reference
+  const std::vector<BasicBlock*>& blocks = L->getBlocks(); 
+  std::set<std::pair<CallInst*, Type*>> reductions;
+  for (BasicBlock *BB : blocks){
+    for (Instruction &I : *BB) {
+      if(auto ci = dyn_cast<CallInst>(&I)){
+        auto f = ci->getCalledFunction(); 
+        if(f->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+          LLVM_DEBUG(dbgs() << "Found reduction var: " << ci->getArgOperand(0)->getName() << 
+                               "with reduction function: " << f->getName() << "\n"); 
+          auto ty = ci->getArgOperand(1)->getType(); 
+          reductions.insert(std::make_pair(ci, ty)); 
+          //TODO: check the type to confirm valid reduction
+        }
+      }
+    }
+  }
+   
+  // To make the stripmining work for multiple backends, we parameterize on the step and the termination condition
+  // Roughly speaking, we want the CPU to look like
+  // n = p*s + k
+  // forall(i = 0; i<p; j++)
+  //   for(j = i*s; j < (i+1)*s, j++) 
+  //     B
+  // 
+  // forall(i = p*s; i<n; i++)
+  //   B
+  //
+  // while GPU should look like
+  // forall(i=0..p)
+  //   for(j = 0; j < n; j+=s)
+  //     B
+  //
+  //
+  // accumulate reductions in epilog loop
+  LLVM_DEBUG(dbgs() << "Found " << reductions.size() << " reduction variables in loop\n");
+
+  // Associates calls to reduction functions, first argument to reduction
+  // function,  local reduction allocation, type of unit, unit
+  std::vector<std::tuple<CallInst *, Value *, Value *, Type *, Value *>> redMap;
+  // TODO: Modify the strip mining outer loop to be smaller: currently we are
+  // stack allocating n/2048 reduction values.
+  // TODO: Initialize local reductions with unit values
+  // TODO: move insertion point for reduction allocation
+  // TODO: free reduction allocation
+  Instruction* bloc = nullptr;
+  if(Instruction* I = dyn_cast<Instruction>(TripCount)){
+    bloc = I->getParent()->getTerminator();
+  } else {
+    bloc = F->getEntryBlock().getTerminator();
+  }
+  IRBuilder<> RB(bloc); 
+  Value *outerIters;
+  if(!GPU) 
+    outerIters = RB.CreateUDiv(TripCount,
+                               ConstantInt::get(TripCount->getType(), Count),
+                               "stripiter");
+  else 
+    outerIters = StepSize;
+
+  // Here we iterate over the reductions (calls to reduction functions), and
+  // allocate the local reduction variable array, and build the association
+  // array redMap, and replace references to the original reduction variable
+  // with references to the new local reduction variable in the body of the
+  // inner loop
+  auto nred = RB.CreateAdd(outerIters, ConstantInt::get(outerIters->getType(), 1)); 
+  for(auto &pair : reductions){
+    // TODO: generic allocation/free calls
+    auto ci = pair.first; 
+    auto ptr = ci->getArgOperand(0); 
+    auto unit = ci->getArgOperand(2); 
+    auto ty = pair.second; 
+    auto gmmTy = FunctionType::get(ptr->getType(), { nred->getType() }, false); 
+    auto arrSize = RB.CreateMul(nred, ConstantInt::get(nred->getType(), DL.getTypeAllocSize(ty))); 
+    auto al = RB.CreateCall(M->getOrInsertFunction("gpuManagedMalloc", gmmTy), {arrSize}); 
+    //auto al = RB.CreateBitCast(rm, ty); 
+    //auto al = RB.CreateAlloca(ty, nred, ptr->getName() + "_reduction");
+    IRBuilder<> BH(NewLoop->getHeader()->getTerminator()); 
+    auto lptr = BH.CreateBitCast(
+      BH.CreateGEP(ty, al, NewIdx), 
+      ptr->getType());                             
+    redMap.push_back(std::make_tuple(ci, ptr, al, ty, unit)); 
+    // Assume there is more than one element, and
+    // use the first element for the first iteration of the loop.
+    // roughly: 
+    //   red = init; 
+    //   forall(i = ...){
+    //     red = reduce(red, body(i)); 
+    //   }
+    //   red = init; 
+    //   localred[m+1]; 
+    //   
+    //   forall(k ∈ 0..m-1){
+    //     localred[i] = body(j_0); 
+    //     for(j ∈ j_k_1..j_k_l-1)
+    //       reduce(localred+i, body(j));
+    //   }
+    //   for( j ∈ j_k_m .. n )
+    //     reduce(localred+m, body(j)); 
+    //   
+    //   for(k ∈ 0..m) 
+    //     reduce(&red, localred[k]); 
+    //
+    ptr->replaceUsesWithIf(lptr, [L](Use &u){
+      if(auto I = dyn_cast<Instruction>(u.getUser())){
+        return L->contains(I->getParent()); 
+      } else {
+        return false;
+      }; 
+    });
+  }
+  
+  // Epilog "join" of reduction values stored in local reduction value arrays.
+  // Should be able to use redMap to map original pointer (which is still used
+  // to reduce the remainder of the strimined loop, so you probably want to
+  // start the reduction with that value).
+  LLVM_DEBUG(dbgs() << "Function after strip mining, before reduction epilogue\n" << *F); 
+   
+  if(!reductions.empty()){
+    ValueToValueMapTy VMap; 
+    SmallVector<Instruction*, 4> CIS;
+    for(auto &BB : NewLoop->blocks()){
+      // We find the location that we reduce into and create a store of unit
+      // TODO: Get unit value for reduction
+      for(auto &I : *BB){
+        if(auto *CI = dyn_cast<CallInst>(&I)){
+          auto *F = CI->getCalledFunction(); 
+          if(F->getAttributes().hasAttrSomewhere(Attribute::KitsuneReduction)){
+            // this must be defined in the outer parallel loop but before the inner loop 
+            IRBuilder<> PB(dyn_cast<Instruction>(CI->getArgOperand(0))->getNextNode()); 
+            PB.CreateStore(CI->getArgOperand(2), CI->getArgOperand(0)); 
+            CIS.push_back(&I); 
+            F->removeFnAttr(Attribute::NoInline); 
+            F->removeFnAttr(Attribute::OptimizeNone); 
+          }
+        }
+      }
+    }
+
+  // We insert the reduction code at every sync corresponding to the strimined
+  // loop
+  //
+  // Sync 
+  // RedEpiHeader
+  //   RedEpiBody
+  // RedEpiExit
+
+    Instruction* term = LatchExit->getTerminator(); 
+    BasicBlock *PostSync = term->getSuccessor(0);
+    BasicBlock* RedEpiHeader = BasicBlock::Create(LatchExit->getContext(), "reductionEpilogue", LatchExit->getParent(), LatchExit); 
+    RedEpiHeader->moveAfter(LatchExit); 
+    ReplaceInstWithInst(term, SyncInst::Create(RedEpiHeader, SyncReg)); 
+    BranchInst::Create(PostSync, RedEpiHeader);
+    PHINode *Idx = PHINode::Create(outerIters->getType(), 2,
+                                   "reductionepilogueidx",
+                                   RedEpiHeader->getFirstNonPHIIt());
+    IRBuilder<> BH(RedEpiHeader, RedEpiHeader->getFirstNonPHIIt()); 
+    Idx->addIncoming(ConstantInt::get(outerIters->getType(), 0), LatchExit);
+    Instruction *bodyTerm, *exitTerm;
+    Value *cmp = BH.CreateCmp(CmpInst::ICMP_NE, Idx, outerIters); 
+    SplitBlockAndInsertIfThenElse(cmp, RedEpiHeader->getTerminator(), &bodyTerm, &exitTerm);
+
+    IRBuilder<> BB(bodyTerm); 
+    // For each reduction, get the allocated thread local reduced values and
+    // reduce them. 
+    for(auto& kv : redMap){
+      const auto [ ci, ptr, al, ty, unit ] = kv; 
+      auto lptr = BB.CreateBitCast(
+        BB.CreateGEP(ty, al, Idx), 
+        ptr->getType());                             
+      auto x = BB.CreateLoad(ty, lptr); 
+      BB.SetCurrentDebugLocation(ci->getDebugLoc()); 
+      BB.CreateCall(ci->getCalledFunction(), { ptr, x , unit}); 
+    }
+    Value *IdxAdd =
+        BB.CreateAdd(Idx, ConstantInt::get(Idx->getType(), 1),
+                          Idx->getName() + ".add");
+    BasicBlock* body = bodyTerm->getParent(); 
+    BasicBlock* loopExit = exitTerm->getParent(); 
+    Idx->addIncoming(IdxAdd, body); 
+    ReplaceInstWithInst(bodyTerm, BranchInst::Create(RedEpiHeader)); 
+
+    // Update Loopinfo with reduction loop
+    Loop* RL = LI->AllocateLoop(); 
+    if(ParentLoop) ParentLoop->addChildLoop(RL); 
+    else LI->addTopLevelLoop(RL); 
+    if(!ParentLoop){
+      RL->addBasicBlockToLoop(RedEpiHeader, *LI); 
+      RL->addBasicBlockToLoop(body, *LI); 
+    } else {
+      LI->changeLoopFor(RedEpiHeader, RL);
+      RL->addBlockEntry(RedEpiHeader);
+      LI->changeLoopFor(body, RL); 
+      RL->addBlockEntry(body); 
+    }
+  }
+
+  LLVM_DEBUG(dbgs() << "Function after reduction epilogue\n" << *F);  
+
+  // TODO: fix DT updates
+  //DT->recalculate(*F); 
+
+#ifndef NDEBUG
+  //DT->verify();
+  //LI->verify(*DT);
+#endif
 
   return NewLoop;
 }

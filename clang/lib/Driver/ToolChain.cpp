@@ -2277,6 +2277,8 @@ void ToolChain::AddKitsunePreprocessorArgs(const ArgList &Args,
     switch (TT) {
     case TTID::Nolo:
       return;
+    case TTID::GPU:
+      return;
     case TTID::Cuda:
       return ExtractArgsFromString(KITSUNE_CUDA_EXTRA_PREPROCESSOR_FLAGS,
                                    CmdArgs, Args);
@@ -2355,6 +2357,8 @@ void ToolChain::AddKitsuneCompilerArgs(const ArgList &Args,
       AddKitsuneOpenCilkCommonArgs(Args, CmdArgs);
       ExtractArgsFromString(KITSUNE_OPENCILK_EXTRA_COMPILER_FLAGS, CmdArgs,
                             Args);
+      return;
+    case llvm::TTID::GPU:
       return;
     case TTID::OpenMP:
       AddKitsuneOpenMPCommonArgs(Args, CmdArgs);
@@ -2563,6 +2567,8 @@ void ToolChain::AddKitsuneLinkerArgs(const ArgList &Args,
     case TTID::OpenCilk:
       AddKitsuneOpenCilkLinkerArgs(Args, CmdArgs);
       ExtractArgsFromString(KITSUNE_OPENCILK_EXTRA_LINKER_FLAGS, CmdArgs, Args);
+      return;
+    case TTID::GPU:
       return;
     case TTID::OpenMP:
       AddKitsuneOpenMPLinkerArgs(Args, CmdArgs);

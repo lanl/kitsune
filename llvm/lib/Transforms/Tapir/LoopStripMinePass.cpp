@@ -130,8 +130,8 @@ static bool tryToStripMineLoop(
                   "form.\n");
     return false;
   }
-  bool StripMiningRequested =
-      (hasLoopStripmineTransformation(L) == TM_ForcedByUser);
+  //bool StripMiningRequested =
+  //    (hasLoopStripmineTransformation(L) == TM_ForcedByUser);
   TargetTransformInfo::StripMiningPreferences SMP =
     gatherStripMiningPreferences(L, SE, TTI, ProvidedCount);
 
@@ -152,12 +152,12 @@ static bool tryToStripMineLoop(
 
   // If the loop size is unknown, then we cannot compute a stripmining count for
   // it.
-  if (!ExplicitCount && UnknownSize) {
-    LLVM_DEBUG(dbgs() << "  Not stripmining loop with unknown size.\n");
-    ORE.emit(createMissedAnalysis("UnknownSize", L)
-             << "Cannot stripmine loop with unknown size.");
-    return false;
-  }
+  //if (!ExplicitCount && UnknownSize) {
+  //  LLVM_DEBUG(dbgs() << "  Not stripmining loop with unknown size.\n");
+  //  ORE.emit(createMissedAnalysis("UnknownSize", L)
+  //           << "Cannot stripmine loop with unknown size.");
+  //  return false;
+ // }
 
   // If the loop size is enormous, then we might want to use a stripmining count
   // of 1 for it.
@@ -212,12 +212,14 @@ static bool tryToStripMineLoop(
 
   // If the loop contains potentially expensive function calls, then we don't
   // want to stripmine it.
+  /*
   if (NumCalls > 0 && !ExplicitCount && !StripMiningRequested) {
     LLVM_DEBUG(dbgs() << "  Skipping loop with expensive function calls.\n");
     ORE.emit(createMissedAnalysis("ExpensiveCalls", L)
              << "Not stripmining loop with potentially expensive calls.");
     return false;
   }
+  */
 
   // Make sure the count is a power of 2.
   if (!isPowerOf2_32(SMP.Count))
@@ -282,12 +284,30 @@ static bool tryToStripMineLoop(
   // Save loop properties before it is transformed.
   MDNode *OrigLoopID = L->getLoopID();
 
+  // TODO: change this to check tapir loop attributes for custom target
+  bool GPU = false;
+
+  TTID target = TGI.hasTTID() ? TGI.getTTID() : TTID::OpenCilk;
+
+  switch(target){
+    // We don't want to stripmine for serial targets
+    case TTID::Serial:
+    case TTID::Cuda:
+    case TTID::Hip:
+      return false; 
+    case TTID::GPU:
+      GPU = true;
+      break;
+    default:
+      break; 
+  }
+
   // Stripmine the loop
   Loop *RemainderLoop = nullptr;
   Loop *NewLoop = StripMineLoop(L, SMP.Count, SMP.AllowExpensiveTripCount,
                                 SMP.UnrollRemainder, LI, &SE, &DT, TTI, &AC, TI,
                                 &ORE, PreserveLCSSA, ParallelEpilog,
-                                NeedNestedSync, &RemainderLoop);
+                                NeedNestedSync, &RemainderLoop, GPU);
   if (!NewLoop)
     return false;
 
@@ -307,13 +327,10 @@ static bool tryToStripMineLoop(
   return true;
 }
 
-PreservedAnalyses LoopStripMinePass::run(Function &F,
-                                         FunctionAnalysisManager &AM) {
-  Module& M  = *F.getParent();
 
-  auto &MAM = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F);
-  const TapirTargetInfo &TGI = *MAM.getCachedResult<TapirTargetAnalysis>(M);
-
+static bool loopStripMineImpl(Function &F,
+                              FunctionAnalysisManager &AM,
+                              TapirTargetInfo &TGI) {
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
   auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
   auto &LI = AM.getResult<LoopAnalysis>(F);
@@ -372,7 +389,7 @@ PreservedAnalyses LoopStripMinePass::run(Function &F,
     // The parent must not be damaged by stripmining!
 #ifndef NDEBUG
     if (LoopChanged && ParentL)
-      ParentL->verifyLoop();
+      //ParentL->verifyLoop();
 #endif
 
     // Clear any cached analysis results for L if we removed it completely.
@@ -380,8 +397,29 @@ PreservedAnalyses LoopStripMinePass::run(Function &F,
       LAM->clear(L, LoopName);
   }
 
+  return Changed;
+}
+
+PreservedAnalyses LoopStripMinePass::run(Module &M,
+                                         ModuleAnalysisManager &AM){
+  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  auto &TGI = AM.getResult<TapirTargetAnalysis>(M);
+
+  bool Changed = false;
+
+  for(auto &F: M){
+    if(!F.empty())
+      Changed |= loopStripMineImpl(F, FAM, TGI);
+  }
+
   if (!Changed)
     return PreservedAnalyses::all();
 
-  return getLoopPassPreservedAnalyses();
+  PreservedAnalyses PA = PreservedAnalyses::none();
+  // If we've changed, assume we've not preserved anything
+  PA.preserve<ModuleAnalysisManagerFunctionProxy>();
+  return PA;
+  //return PreservedAnalyses::none(); 
+
 }
+                                          

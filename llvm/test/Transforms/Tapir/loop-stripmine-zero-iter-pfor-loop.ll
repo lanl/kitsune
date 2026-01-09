@@ -1,6 +1,6 @@
 ; Check that loop-stripmining generates the correct IR to enable a zero-iteration parallel loop to be optimized away.
 ;
-; RUN: opt < %s -passes="cgscc(devirt<4>(inline,function<eager-inv;no-rerun>(loop(indvars),sroa<modify-cfg>))),function<eager-inv>(loop-stripmine,early-cse<memssa>,instcombine<max-iterations=1;no-verify-fixpoint>),function(simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>)" -S | FileCheck %s
+; RUN: opt < %s -passes="cgscc(devirt<4>(inline,function<eager-inv;no-rerun>(loop(indvars),sroa<modify-cfg>))),loop-stripmine,function<eager-inv>(early-cse<memssa>,instcombine<max-iterations=1;no-verify-fixpoint>),function(simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>)" -S | FileCheck %s
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 

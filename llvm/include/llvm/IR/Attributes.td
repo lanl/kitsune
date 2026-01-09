@@ -276,6 +276,9 @@ def ReadNone : EnumAttr<"readnone", IntersectAnd, [ParamAttr]>;
 /// Function only reads from memory.
 def ReadOnly : EnumAttr<"readonly", IntersectAnd, [ParamAttr]>;
 
+/// Tapir reducer-related attributes.
+def KitsuneReduction : EnumAttr<"kitsune_reduction", IntersectPreserve, [FnAttr]>;
+
 /// Return value is always equal to this argument.
 def Returned : EnumAttr<"returned", IntersectAnd, [ParamAttr]>;
 

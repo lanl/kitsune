@@ -5229,6 +5229,14 @@ def NonString : InheritableAttr {
   let Documentation = [NonStringDocs];
 }
 
+// +===== kitsune-/tapir-centric attributes
+
+def KitsuneReduction : InheritableAttr {
+  let Spellings = [Clang<"kitsune_reduction">];
+  let Subjects = SubjectList<[FunctionLike]>;
+  let Documentation = [TapirRTDocs];
+}
+
 def TapirTarget : StmtAttr {
   let Spellings = [CXX11<"tapir","target">];
 
@@ -5247,9 +5255,9 @@ def TapirTarget : StmtAttr {
                              ErrorDiag, "'parallel' statements">;
   let Args = [
     EnumArgument<"TapirTargetAttrType", "TapirTargetAttrTy", /*is_string=*/ true,
-                 ["nolo", "serial", "cuda", "hip", "opencilk", "openmp",
+                 ["nolo", "serial", "cuda", "hip", "gpu",  "opencilk", "openmp",
                   "qthreads", "realm"],
-                 ["Nolo", "Serial", "Cuda", "Hip", "OpenCilk", "OpenMP",
+                 ["Nolo", "Serial", "Cuda", "Hip", "GPU", "OpenCilk", "OpenMP",
                   "Qthreads", "Realm"],
                  0>
   ];

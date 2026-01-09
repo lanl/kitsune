@@ -14,6 +14,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "kitsune/Analysis/TapirTargetAnalysis.h"
 #include "kitsune/Passes/PipelineUtils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -1597,34 +1598,6 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // rather than on each loop in an inside-out manner, and so they are actually
   // function passes.
 
-  // Stripmine Tapir loops, if pass is enabled.
-  if (PTO.LoopStripmine && Level.getSpeedupLevel() > 1 &&
-      !Level.isOptimizingForSize()) {
-    LoopPassManager LPM1, LPM2;
-    LPM1.addPass(
-        IndVarSimplifyPass(/*WidenIndVars=*/true, /*TapirLoopsOnly=*/true));
-    OptimizePM.addPass(
-        createFunctionToLoopPassAdaptor(std::move(LPM1),
-                                        /*UseMemorySSA=*/true,
-                                        /*UseBlockFrequencyInfo=*/true));
-    OptimizePM.addPass(LoopStripMinePass());
-    // Cleanup tasks after stripmining loops.
-    OptimizePM.addPass(TaskSimplifyPass());
-    // Cleanup after stripmining loops.
-    LPM2.addPass(LoopSimplifyCFGPass());
-    LPM2.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
-                          /*AllowSpeculation=*/true));
-    OptimizePM.addPass(
-        createFunctionToLoopPassAdaptor(std::move(LPM2),
-                                        /*UseMemorySSA=*/true,
-                                        /*UseBlockFrequencyInfo=*/true));
-    // Don't run IndVarSimplify at this point, as it can actually inhibit
-    // vectorization in some cases.
-    OptimizePM.addPass(JumpThreadingPass());
-    OptimizePM.addPass(CorrelatedValuePropagationPass());
-    OptimizePM.addPass(InstCombinePass());
-  }
-
   invokeVectorizerStartEPCallbacks(OptimizePM, Level);
 
   LoopPassManager LPM;
@@ -1760,8 +1733,41 @@ PassBuilder::buildTapirLoopLoweringPipeline(OptimizationLevel Level,
   FPM.addPass(createFunctionToLoopPassAdaptor(std::move(LPM2),
                                               /*UseMemorySSA=*/false,
                                               /*UseBlockFrequencyInfo=*/false));
-  MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
 
+  // Stripmine Tapir loops, if pass is enabled.
+  // This was moved from buildModuleOptimizationPipeline, I (George) expect it to be
+  // beneficial for all parallel backends. Needs performance evaluation to confirm.
+  if (PTO.LoopStripmine) {
+    // We need to do tapir target analysis to determine how to stripmine
+    MPM.addPass(RequireAnalysisPass<TapirTargetAnalysis, Module>());
+    //MPM.addPass(
+        //createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<TapirTargetAnalysis>()));
+
+    LoopPassManager LPM1, LPM2;
+    LPM1.addPass(IndVarSimplifyPass(true, true));
+    FPM.addPass(
+        createFunctionToLoopPassAdaptor(std::move(LPM1),
+                                        /*UseMemorySSA=*/true,
+                                        /*UseBlockFrequencyInfo=*/true));
+    MPM.addPass(LoopStripMinePass());
+    // Cleanup tasks after stripmining loops.
+    FPM.addPass(TaskSimplifyPass());
+    // Cleanup after stripmining loops.
+    LPM2.addPass(LoopSimplifyCFGPass());
+    LPM2.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
+                          /*AllowSpeculation=*/true));
+    FPM.addPass(
+        createFunctionToLoopPassAdaptor(std::move(LPM2),
+                                        /*UseMemorySSA=*/true,
+                                        /*UseBlockFrequencyInfo=*/true));
+    // Don't run IndVarSimplify at this point, as it can actually inhibit
+    // vectorization in some cases.
+    FPM.addPass(JumpThreadingPass());
+    FPM.addPass(CorrelatedValuePropagationPass());
+    FPM.addPass(InstCombinePass());
+  }
+
+  MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
   // Outline Tapir loops as needed.
   MPM.addPass(LoopSpawningPass(Level));
   if (VerifyTapirLowering)

@@ -82,7 +82,7 @@ DECLARE_DLSYM(cuFuncGetName);
 DECLARE_DLSYM(cuFuncGetAttribute);
 
 /* Context management */
-DECLARE_DLSYM(cuCtxCreate_v3);
+DECLARE_DLSYM(cuCtxCreate_v4);
 DECLARE_DLSYM(cuDevicePrimaryCtxRetain);
 DECLARE_DLSYM(cuCtxGetCurrent);
 DECLARE_DLSYM(cuCtxSetCurrent);

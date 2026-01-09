@@ -26,13 +26,13 @@ class LLVMLoop;
 class GPUABI : public TapirTarget {
   LLVMLoop *LOP = nullptr;
 public:
-  GPUABI(Module &M) : TapirTarget(M) {}
+  GPUABI(Module &M, const TapirTargetOptions &TTO) : TapirTarget(M, TTO) {}; 
   ~GPUABI() {}
   Value *lowerGrainsizeCall(CallInst *GrainsizeCall) override final;
   void lowerSync(SyncInst &SI) override final;
 
   void addHelperAttributes(Function &F) override final {}
-  void preProcessFunction(Function &F, TaskInfo &TI,
+  bool preProcessFunction(Function &F, TaskInfo &TI,
                           bool OutliningTapirLoops) override final;
   void postProcessFunction(Function &F, bool OutliningTapirLoops)
     override final;
@@ -49,8 +49,7 @@ public:
   void processSubTaskCall(TaskOutlineInfo &TOI, DominatorTree &DT)
     override final;
 
-  LoopOutlineProcessor *getLoopOutlineProcessor(const TapirLoopInfo *TL,
-		  OptimizationLevel OptLevel = OptimizationLevel=O2)						
+  LoopOutlineProcessor *getLoopOutlineProcessor(const TapirLoopInfo *TL)						
     override final;
 };
 

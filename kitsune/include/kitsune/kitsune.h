@@ -8,6 +8,16 @@
 #ifndef __KITSUNE_KITSUNE_H__
 #define __KITSUNE_KITSUNE_H__
 
+#include <stdint.h>
+#include <stddef.h>
+
+#if defined(reduction)
+#warning found reduction definition: try puttin kitsune lower in include order
+#else
+#define reduction __attribute__((optnone, noinline, kitsune_reduction))
+#endif
+
+
 #if defined(spawn)
 // FIXME KITSUNE: Should this be an error instead of a warning?
 #warning encountered multiple definitions of spawn!

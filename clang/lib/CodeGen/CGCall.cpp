@@ -2512,6 +2512,9 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
       FuncAttrs.addMemoryAttr(llvm::MemoryEffects::inaccessibleOrArgMemOnly());
       FuncAttrs.addAttribute(llvm::Attribute::NoUnwind);
     }
+    if (TargetDecl->hasAttr<KitsuneReductionAttr>()) {
+      FuncAttrs.addAttribute(llvm::Attribute::KitsuneReduction);
+    }
     if (const auto *RA = TargetDecl->getAttr<RestrictAttr>();
         RA && RA->getDeallocator() == nullptr)
       RetAttrs.addAttribute(llvm::Attribute::NoAlias);

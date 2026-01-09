@@ -41,8 +41,12 @@
 #include "llvm/Transforms/Tapir/QthreadsABI.h"
 #endif // KITSUNE_QTHREADS_ENABLED
 
-#if KITSNUE_REALM_ENABLED
+#if KITSUNE_REALM_ENABLED
 #include "llvm/Transforms/Tapir/RealmABI.h"
 #endif // KITSUNE_REALM_ENABLED
 
+#if KITSUNE_GPU_ENABLED
+#include "llvm/Transforms/Tapir/GPUABI.h"
+#endif // KITSUNE_REALM_ENABLED
+       //
 #endif // LLVM_TAPIR_TARGETS_H

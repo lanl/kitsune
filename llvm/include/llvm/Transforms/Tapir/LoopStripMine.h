@@ -47,7 +47,8 @@ Loop *StripMineLoop(Loop *L, unsigned Count, bool AllowExpensiveTripCount,
                     AssumptionCache *AC, TaskInfo *TI,
                     OptimizationRemarkEmitter *ORE, bool PreserveLCSSA,
                     bool ParallelEpilog, bool NeedNestedSync,
-                    Loop **Remainderloop = nullptr);
+                    Loop **Remainderloop = nullptr,
+                    bool GPU = false);
 
 } // end namespace llvm
 
