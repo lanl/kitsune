@@ -9836,13 +9836,11 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
   };
 
   ArgStringList CmdArgs;
-  bool HasOffloadToolChain = false;
   for (Action::OffloadKind Kind : {Action::OFK_Cuda, Action::OFK_OpenMP,
                                    Action::OFK_HIP, Action::OFK_SYCL}) {
     auto TCRange = C.getOffloadToolChains(Kind);
     for (auto &I : llvm::make_range(TCRange)) {
       const ToolChain *TC = I.second;
-      HasOffloadToolChain = true;
 
       // We do not use a bound architecture here so options passed only to a
       // specific architecture via -Xarch_<cpu> will not be forwarded.
@@ -9939,15 +9937,6 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
       }
     }
   }
-
-  // A link job made up only of objects and archives has no offloading
-  // toolchain when the offloading language is only enabled by its source
-  // inputs (e.g. CUDA with `--offload-link`), so the loop above never sees
-  // `--offload-arch`. Still honor an explicit request so the matching device
-  // images are extracted from static libraries.
-  if (!HasOffloadToolChain)
-    for (StringRef Arg : Args.getAllArgValues(OPT_offload_arch_EQ))
-      CmdArgs.emplace_back(Args.MakeArgString("--should-extract=" + Arg));
 
   if (const llvm::Triple *AuxTriple = getToolChain().getAuxTriple())
     CmdArgs.push_back(

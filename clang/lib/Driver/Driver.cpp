@@ -1015,10 +1015,11 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
   bool UseLLVMOffload = C.getInputArgs().hasArg(
       options::OPT_foffload_via_llvm, options::OPT_fno_offload_via_llvm, false);
   bool IsCuda =
-      llvm::any_of(Inputs,
-                   [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
-                     return types::isCuda(I.first);
-                   }) &&
+      (llvm::any_of(Inputs,
+                    [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
+                      return types::isCuda(I.first);
+                    }) ||
+       C.getInputArgs().hasArg(options::OPT_cuda_link)) &&
       !UseLLVMOffload;
   bool IsHIP =
       (llvm::any_of(Inputs,
